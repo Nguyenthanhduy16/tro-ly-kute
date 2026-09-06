@@ -56,6 +56,9 @@ export const config = {
   ai: aiConfig(),
 
   minDoneLength: num(process.env.MIN_DONE_LENGTH, 40),
+
+  // Nhip doi mau role cap bac. 0 = tat, mau dung yen.
+  shimmerSeconds: num(process.env.SHIMMER_SECONDS, 45),
 };
 
 export function assertRuntimeConfig() {

@@ -289,6 +289,13 @@ export function saveRankRoleId(guildId, rankKey, roleId) {
     .run(guildId, rankKey, roleId);
 }
 
+/** Cac cap dang thuc su co nguoi deo — de khong doi mau role trong khong. */
+export function heldRankKeys(guildId) {
+  return q('SELECT DISTINCT rank_key FROM users WHERE guild_id=? AND rank_key IS NOT NULL')
+    .all(guildId)
+    .map((r) => r.rank_key);
+}
+
 export function setUserRank(guildId, userId, rankKey) {
   q('UPDATE users SET rank_key=? WHERE guild_id=? AND user_id=?').run(rankKey, guildId, userId);
 }

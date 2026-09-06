@@ -128,6 +128,30 @@ tách thành mục riêng trong danh sách thành viên, tránh làm rối sideb
 
 Muốn đổi tên cấp, mốc XP hay màu thì sửa mảng `RANKS` ở đầu [`src/ranks.js`](src/ranks.js).
 
+### Màu chạy
+
+Discord **không cho** role dùng màu gradient hay kiểu "holographic" lấp lánh nếu server
+chưa được boost — gọi API sẽ nhận `403 Missing guild feature (code 670006)`. Đó là hàng
+rào tính phí, không lách được bằng code.
+
+Cách thay thế: bot tự đổi màu role theo nhịp. Mỗi cấp có bảng ba màu cùng tông
+([`src/shimmer.js`](src/shimmer.js)), nên màu chuyển động mà vẫn nhận ra cấp.
+
+```
+SHIMMER_SECONDS=45   # nhịp đổi màu · 0 = tắt, màu đứng yên
+```
+
+Hai điều đánh đổi, cân nhắc trước khi để nhịp quá nhanh:
+
+- **Mỗi lần đổi màu là một dòng trong audit log.** Bot chỉ đổi màu những cấp *đang có
+  người đeo*, nên server ít người thì lượng ghi rất thấp — nhưng nhịp 5 giây sẽ làm
+  ngập audit log và che mất các sự kiện quản trị thật.
+- **Màu là thuộc tính của role, không phải của người.** Mọi người cùng cấp đổi màu
+  cùng lúc, không thể cho mỗi người một nhịp riêng.
+
+Ở nhịp 45 giây, hiệu ứng đọc ra như màu đang thở chứ không phải lấp lánh. Muốn lấp lánh
+thật thì phải boost server để mở `ENHANCED_ROLE_COLORS`.
+
 ## Các lệnh
 
 | Lệnh | Việc nó làm |
@@ -201,11 +225,12 @@ src/
   db.js             schema SQLite (node:sqlite, không cần build native)
   xp.js             streak, XP, level — hàm thuần, có test
   ranks.js          cấp bậc, tạo và gán role đổi màu tên
+  shimmer.js        vòng lặp đổi màu role theo nhịp
   ai.js             prompt HR + lớp provider (OpenRouter / Gemini)
   review.js         gom dữ liệu tuần, dựng embed đánh giá
   scheduler.js      một cron mỗi giờ, đọc cấu hình từng server
   commands/         mỗi lệnh một file
-scripts/selftest.js  81 kiểm tra logic, chạy `npm test`, không cần Discord
+scripts/selftest.js  89 kiểm tra logic, chạy `npm test`, không cần Discord
 scripts/check-ai.js  chẩn đoán key + model, chạy `npm run check-ai`
 scripts/send-reminder.js  bắn lời nhắc thủ công, chạy `npm run remind`
 data/bot.db          dữ liệu (đã gitignore)

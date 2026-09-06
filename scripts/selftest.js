@@ -173,6 +173,38 @@ function fakeGuild({ canManage = true, botPosition = 100 } = {}) {
   check('role bot qua thap -> canh bao thu tu', problems.some((p) => p.includes('kéo role của bot lên trên')), true);
 }
 
+/* ------------------------------------------------------------ hieu ung mau chay */
+const shimmer = await import('../src/shimmer.js');
+
+check('moi cap deu co bang mau', ranks.RANKS.every((r) => shimmer.SHIMMER_PALETTES[r.key]?.length >= 3), true);
+check('mau dau bang trung mau goc cua cap', ranks.RANKS.every((r) => shimmer.SHIMMER_PALETTES[r.key][0] === r.color), true);
+check('mau lap lai theo chu ky', shimmer.shimmerColor('ben', 0), shimmer.shimmerColor('ben', 3));
+check('nhip ke tiep doi mau', shimmer.shimmerColor('ben', 0) !== shimmer.shimmerColor('ben', 1), true);
+check('cap khong ton tai -> khong co mau', shimmer.shimmerColor('khong-co', 0), null);
+
+// Chi doi mau cap dang co nguoi deo: khong ai deo -> khong request nao.
+{
+  db.updateGuildConfig(G, { channel_id: 'chan-1' });
+  const calls = [];
+  const fakeClient = {
+    guilds: {
+      fetch: async () => ({
+        roles: {
+          cache: new Map(),
+          fetch: async (id) => ({ id, color: 0, setColor: async (c) => calls.push([id, c]) }),
+        },
+      }),
+    },
+  };
+
+  check('chua ai co cap -> khong doi mau role nao', await shimmer.shimmerTick(fakeClient, 1), 0);
+
+  db.setUserRank(G, U, 'ben');
+  check('co nguoi deo -> doi dung 1 role', await shimmer.shimmerTick(fakeClient, 1), 1);
+  check('doi sang dung mau cua nhip do', calls[0][1], shimmer.shimmerColor('ben', 1));
+  db.setUserRank(G, U, null);
+}
+
 /* ------------------------------------------- modal & embed hợp lệ với Discord */
 const { buildModal } = await import('../src/commands/daily.js');
 const { buildPlanModal } = await import('../src/commands/weekly.js');

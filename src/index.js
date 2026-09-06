@@ -2,6 +2,7 @@ import { Client, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
 import { assertRuntimeConfig, config } from './config.js';
 import { commandsByName, modalHandlers } from './commands/index.js';
 import { startScheduler } from './scheduler.js';
+import { startShimmer } from './shimmer.js';
 import { getGuildConfig } from './db.js';
 import { isAiEnabled } from './ai.js';
 
@@ -16,6 +17,7 @@ client.once(Events.ClientReady, (c) => {
   console.log(`[bot] múi giờ ${config.timezone} · streak ${config.streakMode} · AI ${isAiEnabled() ? 'bật' : 'tắt'}`);
   for (const guild of c.guilds.cache.values()) getGuildConfig(guild.id);
   startScheduler(client);
+  startShimmer(client);
 });
 
 client.on(Events.GuildCreate, (guild) => {
