@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS guild_config (
   weekly_dow     INTEGER NOT NULL DEFAULT 0,
   weekly_hour    INTEGER NOT NULL DEFAULT 20,
   use_threads    INTEGER NOT NULL DEFAULT 1,
+  remind_weekends INTEGER NOT NULL DEFAULT 0,
   updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 `);
@@ -86,9 +87,13 @@ if (!db.prepare('PRAGMA table_info(dailies)').all().some((c) => c.name === 'mess
   db.exec('ALTER TABLE dailies ADD COLUMN message_id TEXT');
 }
 
-// Migration cho DB tao truoc khi co che do thread.
-if (!db.prepare('PRAGMA table_info(guild_config)').all().some((c) => c.name === 'use_threads')) {
+// Migration cho DB tao truoc khi co cac cot nay.
+const guildCols = db.prepare('PRAGMA table_info(guild_config)').all().map((c) => c.name);
+if (!guildCols.includes('use_threads')) {
   db.exec('ALTER TABLE guild_config ADD COLUMN use_threads INTEGER NOT NULL DEFAULT 1');
+}
+if (!guildCols.includes('remind_weekends')) {
+  db.exec('ALTER TABLE guild_config ADD COLUMN remind_weekends INTEGER NOT NULL DEFAULT 0');
 }
 
 const q = (sql) => db.prepare(sql);

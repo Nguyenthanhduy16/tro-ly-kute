@@ -246,6 +246,31 @@ db.updateGuildConfig(G, { channel_id: 'chan-1' });
   check('cuoi tuan khong bi nhac', sent.length, 0);
 }
 
+/* ------------------------------------------- nhac cuoi tuan (khong phat streak) */
+{
+  db.updateGuildConfig(G, { remind_weekends: 1 });
+  const cfg = db.getGuildConfig(G);
+
+  const { client, sent } = fakeDiscord();
+  await _internals.sendDailyReminder(client, cfg, { lastCall: false, today: '2025-09-07' });
+  check('bat nhac cuoi tuan -> co gui', sent.length, 1);
+  const e = sent[0].embeds[0].data;
+  check('cuoi tuan dung tieu de nhe nhang', e.title.includes('Cuối tuần'), true);
+  check('cuoi tuan van ping user', e.description.includes(`<@${U}>`), true);
+  check('cuoi tuan KHONG doa mat streak', /mất thì tiếc lắm/.test(e.description), false);
+  check('cuoi tuan noi ro khong dut streak', e.description.includes('không đứt streak'), true);
+
+  sent.length = 0;
+  await _internals.sendDailyReminder(client, cfg, { lastCall: true, today: '2025-09-07' });
+  check('cuoi tuan khong goi lan cuoi', sent.length, 0);
+
+  sent.length = 0;
+  await _internals.sendDailyReminder(client, cfg, { lastCall: false, today: '2025-09-03' });
+  check('ngay thuong van doa mat streak', /mất thì tiếc lắm/.test(sent[0].embeds[0].data.description), true);
+
+  db.updateGuildConfig(G, { remind_weekends: 0 });
+}
+
 /* ----------------------------------------------------- tong ket tuan */
 {
   const { client, sent } = fakeDiscord();

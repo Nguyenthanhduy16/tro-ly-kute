@@ -43,7 +43,9 @@ function pendingUsers(guildId, today) {
 }
 
 async function sendDailyReminder(client, guildCfg, { lastCall, today = logicalDate() }) {
-  if (!isRequiredDay(today)) return;
+  // Ngay khong bat buoc: chi nhac neu server bat, va khong bao gio goi lan cuoi.
+  const required = isRequiredDay(today);
+  if (!required && (!guildCfg.remind_weekends || lastCall)) return;
 
   // Nhắc trong thread của ngày: ping vẫn báo như thường, mà kênh chính không bị dồn tin.
   const { target: channel } = await dayDestination(client, guildCfg, today);
@@ -66,20 +68,31 @@ async function sendDailyReminder(client, guildCfg, { lastCall, today = logicalDa
     return;
   }
 
+  // Ngày không bắt buộc thì không doạ mất streak, vì bỏ qua thật sự không mất gì.
   const lines = pending.map((u) => {
-    const risk = u.streak > 0 ? ` — đang giữ ${streakBadge(u.streak)} **${u.streak}** ngày, mất thì tiếc lắm` : '';
+    const risk =
+      required && u.streak > 0
+        ? ` — đang giữ ${streakBadge(u.streak)} **${u.streak}** ngày, mất thì tiếc lắm`
+        : '';
     return `<@${u.user_id}>${risk}`;
   });
 
+  const closing = !required
+    ? 'Cuối tuần không bắt buộc — bỏ qua **không đứt streak**. Nhưng có động tay vào gì thì cứ ghi lại, để bản tổng kết cuối tuần không bỏ sót công của bạn.'
+    : lastCall
+      ? 'Hôm nay bạn thực sự đã làm được gì? Gõ `/daily` — kể cả một dòng thành thật vẫn hơn một ngày trống.'
+      : 'Gõ `/daily` để ghi lại. Viết cụ thể vào, cuối tuần trợ lý sẽ đối chiếu với kế hoạch bạn đã cam kết.';
+
   const embed = new EmbedBuilder()
-    .setColor(lastCall ? COLORS.bad : COLORS.warn)
-    .setTitle(lastCall ? '⏰ Gọi lần cuối trong ngày' : '📝 Tới giờ báo cáo rồi')
-    .setDescription(
-      `${lines.join('\n')}\n\n` +
-        (lastCall
-          ? 'Hôm nay bạn thực sự đã làm được gì? Gõ `/daily` — kể cả một dòng thành thật vẫn hơn một ngày trống.'
-          : 'Gõ `/daily` để ghi lại. Viết cụ thể vào, cuối tuần trợ lý sẽ đối chiếu với kế hoạch bạn đã cam kết.'),
-    );
+    .setColor(!required ? COLORS.neutral : lastCall ? COLORS.bad : COLORS.warn)
+    .setTitle(
+      !required
+        ? '🌤️ Cuối tuần — ghi lại nếu có làm gì'
+        : lastCall
+          ? '⏰ Gọi lần cuối trong ngày'
+          : '📝 Tới giờ báo cáo rồi',
+    )
+    .setDescription(`${lines.join('\n')}\n\n${closing}`);
 
   await channel.send({ embeds: [embed] });
 }

@@ -12,7 +12,8 @@
     "start": "node --no-warnings=ExperimentalWarning src/index.js",
     "dev": "node --no-warnings=ExperimentalWarning --watch src/index.js",
     "test": "node --no-warnings=ExperimentalWarning scripts/selftest.js",
-    "check-ai": "node --no-warnings=ExperimentalWarning scripts/check-ai.js"
+    "check-ai": "node --no-warnings=ExperimentalWarning scripts/check-ai.js",
+    "remind": "node --no-warnings=ExperimentalWarning scripts/send-reminder.js"
   },
   "dependencies": {
     "discord.js": "^14.16.3",

@@ -180,8 +180,9 @@ src/
   review.js         gom dữ liệu tuần, dựng embed đánh giá
   scheduler.js      một cron mỗi giờ, đọc cấu hình từng server
   commands/         mỗi lệnh một file
-scripts/selftest.js  56 kiểm tra logic, chạy `npm test`, không cần Discord
+scripts/selftest.js  63 kiểm tra logic, chạy `npm test`, không cần Discord
 scripts/check-ai.js  chẩn đoán key + model, chạy `npm run check-ai`
+scripts/send-reminder.js  ban loi nhac thu cong, chay npm run remind
 data/bot.db          dữ liệu (đã gitignore)
 ```
 

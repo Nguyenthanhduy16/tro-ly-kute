@@ -44,6 +44,11 @@ export const data = new SlashCommandBuilder()
         o
           .setName('threads')
           .setDescription('Gom báo cáo mỗi ngày vào một thread riêng (mặc định: bật)'),
+      )
+      .addBooleanOption((o) =>
+        o
+          .setName('weekend_remind')
+          .setDescription('Nhắc cả T7/CN (bỏ qua vẫn không đứt streak)'),
       ),
   )
   .addSubcommand((s) => s.setName('show').setDescription('Xem cấu hình hiện tại'))
@@ -75,8 +80,10 @@ export async function execute(interaction) {
       });
     }
     const threads = interaction.options.getBoolean('threads');
+    const weekendRemind = interaction.options.getBoolean('weekend_remind');
     updateGuildConfig(guildId, {
       use_threads: threads === null ? undefined : Number(threads),
+      remind_weekends: weekendRemind === null ? undefined : Number(weekendRemind),
       channel_id: interaction.options.getChannel('channel')?.id,
       remind_hour: interaction.options.getInteger('remind_hour'),
       last_call_hour: interaction.options.getInteger('last_call_hour'),
@@ -112,6 +119,11 @@ export async function execute(interaction) {
       {
         name: 'Chế độ streak',
         value: config.streakMode === 'weekdays' ? 'Chỉ ngày trong tuần (T7/CN nghỉ)' : 'Mọi ngày',
+        inline: true,
+      },
+      {
+        name: 'Nhắc cuối tuần',
+        value: cfg.remind_weekends ? 'Có — nhưng bỏ qua không đứt streak' : 'Không',
         inline: true,
       },
       {
