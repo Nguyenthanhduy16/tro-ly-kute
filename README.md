@@ -29,10 +29,11 @@ Chủ nhật 20:00 → bot tự tổng hợp, so cam kết với thực tế,
 5. Mời bot vào server bằng link sau (thay `CLIENT_ID` bằng Application ID của bạn):
 
 ```
-https://discord.com/api/oauth2/authorize?client_id=CLIENT_ID&permissions=18432&scope=bot%20applications.commands
+https://discord.com/api/oauth2/authorize?client_id=CLIENT_ID&permissions=309237663744&scope=bot%20applications.commands
 ```
 
-`permissions=18432` = Send Messages + Embed Links, không xin gì thừa.
+`permissions=309237663744` = Send Messages + Embed Links + Create Public Threads +
+Send Messages in Threads. Không xin gì thừa — không đọc tin nhắn, không xoá gì.
 
 ### 2. Lấy key cho phần AI review
 
@@ -77,6 +78,32 @@ npm start
 ```
 
 Không đặt `channel` thì bot không biết nhắc ở đâu — nhắc nhở và tổng kết tuần sẽ im lặng.
+
+## Kênh trông như thế nào
+
+Bot gom mọi thứ của một ngày vào **một thread duy nhất** trong kênh bạn chỉ định:
+
+```
+#workspace
+├─ 📅 08/09 (T2)   ← thread hôm nay, đang mở
+│    ├─ báo cáo của Duy
+│    ├─ báo cáo của An
+│    └─ 21:00 · bot nhắc những ai chưa nộp
+├─ 📅 07/09 (CN)   ← qua 24h Discord tự lưu trữ, thu gọn khỏi danh sách
+└─ 📊 Tổng kết tuần 01/09 → 07/09   ← đánh giá tuần đăng thẳng ra kênh
+```
+
+Ngày hôm sau, thread cũ tự lưu trữ: biến mất khỏi danh sách kênh nhưng **không mất gì**,
+bấm vào là đọc lại được. Không có tin nhắn nào bị xoá.
+
+Khi bạn gõ `/daily`, nội dung báo cáo được đăng vào thread cho cả nhóm thấy, còn bạn nhận
+riêng một dòng xác nhận kèm XP và link tới bài — cùng một nội dung không hiện hai lần.
+Nộp lại `/daily` cho ngày đó thì bot **sửa đúng bài cũ** chứ không đăng thêm bài mới.
+
+Đánh giá tuần cố ý đăng ra kênh chính chứ không chui vào thread: mỗi tuần một lần,
+và đó là thứ đáng để nhìn thấy.
+
+Không thích thread thì tắt: `/setup set threads:False` — mọi thứ quay lại đăng thẳng ra kênh.
 
 ## Các lệnh
 
@@ -153,7 +180,7 @@ src/
   review.js         gom dữ liệu tuần, dựng embed đánh giá
   scheduler.js      một cron mỗi giờ, đọc cấu hình từng server
   commands/         mỗi lệnh một file
-scripts/selftest.js  46 kiểm tra logic, chạy `npm test`, không cần Discord
+scripts/selftest.js  56 kiểm tra logic, chạy `npm test`, không cần Discord
 scripts/check-ai.js  chẩn đoán key + model, chạy `npm run check-ai`
 data/bot.db          dữ liệu (đã gitignore)
 ```

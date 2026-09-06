@@ -39,6 +39,11 @@ export const data = new SlashCommandBuilder()
       )
       .addIntegerOption((o) =>
         o.setName('weekly_hour').setDescription('Giờ chạy đánh giá tuần (0-23)').setMinValue(0).setMaxValue(23),
+      )
+      .addBooleanOption((o) =>
+        o
+          .setName('threads')
+          .setDescription('Gom báo cáo mỗi ngày vào một thread riêng (mặc định: bật)'),
       ),
   )
   .addSubcommand((s) => s.setName('show').setDescription('Xem cấu hình hiện tại'))
@@ -69,7 +74,9 @@ export async function execute(interaction) {
         flags: MessageFlags.Ephemeral,
       });
     }
+    const threads = interaction.options.getBoolean('threads');
     updateGuildConfig(guildId, {
+      use_threads: threads === null ? undefined : Number(threads),
       channel_id: interaction.options.getChannel('channel')?.id,
       remind_hour: interaction.options.getInteger('remind_hour'),
       last_call_hour: interaction.options.getInteger('last_call_hour'),
@@ -92,6 +99,13 @@ export async function execute(interaction) {
       {
         name: 'Đánh giá tuần',
         value: `${DOW_NAMES[cfg.weekly_dow]} ${String(cfg.weekly_hour).padStart(2, '0')}:00`,
+        inline: true,
+      },
+      {
+        name: 'Gom vào thread',
+        value: cfg.use_threads
+          ? 'Bật — mỗi ngày một thread, tự lưu trữ sau 24h'
+          : 'Tắt — mọi thứ đăng thẳng ra kênh',
         inline: true,
       },
       { name: 'Múi giờ', value: config.timezone, inline: true },

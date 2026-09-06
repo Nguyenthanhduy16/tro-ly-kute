@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS dailies (
   blocker     TEXT NOT NULL DEFAULT '',
   xp          INTEGER NOT NULL DEFAULT 0,
   on_time     INTEGER NOT NULL DEFAULT 1,
+  message_id  TEXT,
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (guild_id, user_id, report_date)
@@ -61,6 +62,14 @@ CREATE TABLE IF NOT EXISTS weekly_reviews (
   UNIQUE (guild_id, user_id, week_start)
 );
 
+CREATE TABLE IF NOT EXISTS day_threads (
+  guild_id   TEXT NOT NULL,
+  thread_date TEXT NOT NULL,
+  thread_id  TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (guild_id, thread_date)
+);
+
 CREATE TABLE IF NOT EXISTS guild_config (
   guild_id       TEXT PRIMARY KEY,
   channel_id     TEXT,
@@ -68,9 +77,19 @@ CREATE TABLE IF NOT EXISTS guild_config (
   last_call_hour INTEGER NOT NULL DEFAULT 23,
   weekly_dow     INTEGER NOT NULL DEFAULT 0,
   weekly_hour    INTEGER NOT NULL DEFAULT 20,
+  use_threads    INTEGER NOT NULL DEFAULT 1,
   updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 `);
+
+if (!db.prepare('PRAGMA table_info(dailies)').all().some((c) => c.name === 'message_id')) {
+  db.exec('ALTER TABLE dailies ADD COLUMN message_id TEXT');
+}
+
+// Migration cho DB tao truoc khi co che do thread.
+if (!db.prepare('PRAGMA table_info(guild_config)').all().some((c) => c.name === 'use_threads')) {
+  db.exec('ALTER TABLE guild_config ADD COLUMN use_threads INTEGER NOT NULL DEFAULT 1');
+}
 
 const q = (sql) => db.prepare(sql);
 
@@ -127,6 +146,12 @@ export function saveDaily({ guildId, userId, date, done, nextPlan, blocker, xp, 
        updated_at=datetime('now')`,
   ).run(guildId, userId, date, done, nextPlan ?? '', blocker ?? '', xp, onTime ? 1 : 0);
   return selDaily.get(guildId, userId, date);
+}
+
+/** Nhớ tin nhắn công khai của báo cáo để lần sửa sau chỉnh đúng chỗ, không đăng trùng. */
+export function setDailyMessageId(guildId, userId, date, messageId) {
+  q('UPDATE dailies SET message_id=? WHERE guild_id=? AND user_id=? AND report_date=?')
+    .run(messageId, guildId, userId, date);
 }
 
 /** Mọi ngày đã báo cáo của user, mới nhất trước. */
@@ -232,6 +257,23 @@ export function updateGuildConfig(guildId, patch) {
   const assignments = fields.map((f) => `${f}=?`).join(', ');
   q(`UPDATE guild_config SET ${assignments}, updated_at=datetime('now') WHERE guild_id=?`)
     .run(...fields.map((f) => patch[f]), guildId);
+}
+
+/* ------------------------------------------------------- thread theo ngay */
+
+export function getDayThreadId(guildId, date) {
+  return q('SELECT thread_id FROM day_threads WHERE guild_id=? AND thread_date=?')
+    .get(guildId, date)?.thread_id ?? null;
+}
+
+export function saveDayThreadId(guildId, date, threadId) {
+  q(`INSERT INTO day_threads (guild_id, thread_date, thread_id) VALUES (?,?,?)
+     ON CONFLICT(guild_id, thread_date) DO UPDATE SET thread_id=excluded.thread_id`)
+    .run(guildId, date, threadId);
+}
+
+export function forgetDayThread(guildId, date) {
+  q('DELETE FROM day_threads WHERE guild_id=? AND thread_date=?').run(guildId, date);
 }
 
 export function listConfiguredGuilds() {

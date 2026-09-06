@@ -137,42 +137,124 @@ check('mo ta embed bi cat <= 4096', reviewEmbed.description.length <= 4096, true
 check('moi field embed <= 1024', reviewEmbed.fields.every((f) => f.value.length <= 1024), true);
 check('embed co footer diem', reviewEmbed.footer.text.includes('6.5/10'), true);
 
-/* ------------------------------------------------------ luong nhac nho / cron */
+/* ------------------------------------------------ Discord gia lap (kenh + thread) */
 const { _internals } = await import('../src/scheduler.js');
+const { ensureDayThread, dayDestination } = await import('../src/threads.js');
 
-function fakeClient(sent) {
-  return {
-    channels: { fetch: async () => ({ isTextBased: () => true, send: async (p) => sent.push(p) }) },
+function fakeDiscord() {
+  const sent = [];
+  const threads = new Map();
+  let n = 0;
+  const msg = () => ({ id: `msg-${++n}`, url: `https://discord.test/msg-${n}` });
+
+  const channel = {
+    id: 'chan-1',
+    isTextBased: () => true,
+    isThread: () => false,
+    send: async (p) => (sent.push({ where: 'channel', ...p }), msg()),
+    threads: {
+      create: async ({ name }) => {
+        const id = `thread-${threads.size + 1}`;
+        const t = {
+          id,
+          name,
+          archived: false,
+          isTextBased: () => true,
+          isThread: () => true,
+          setArchived: async (v) => { t.archived = v; },
+          send: async (p) => (sent.push({ where: id, ...p }), msg()),
+          messages: { fetch: async () => { throw new Error('khong co'); } },
+        };
+        threads.set(id, t);
+        return t;
+      },
+    },
+  };
+
+  const client = {
+    channels: {
+      fetch: async (id) => {
+        if (id === 'chan-1') return channel;
+        const t = threads.get(id);
+        if (t) return t;
+        throw new Error('khong tim thay kenh');
+      },
+    },
     guilds: { fetch: async () => ({ members: { fetch: async () => null } }) },
   };
+  return { client, sent, threads, channel };
 }
 
 db.updateGuildConfig(G, { channel_id: 'chan-1' });
-const guildCfg = db.getGuildConfig(G);
 
-// Thu 4 03/09: user chua bao cao -> phai bi nhac va neu ro streak dang treo.
-const nudges = [];
-await _internals.sendDailyReminder(fakeClient(nudges), guildCfg, { lastCall: false, today: '2025-09-03' });
-check('gui dung 1 loi nhac', nudges.length, 1);
-check('loi nhac ping dung user', nudges[0].embeds[0].data.description.includes(`<@${U}>`), true);
-check('loi nhac neu streak dang treo', nudges[0].embeds[0].data.description.includes('2** ngay') || nudges[0].embeds[0].data.description.includes('2** ngày'), true);
+/* --------------------------------------------------------------- thread */
+{
+  const { client, threads } = fakeDiscord();
+  const cfg = db.getGuildConfig(G);
 
-// Thu 3 02/09: da bao cao roi -> khong ping ai, chi khen.
-const praise = [];
-await _internals.sendDailyReminder(fakeClient(praise), guildCfg, { lastCall: false, today: '2025-09-02' });
-check('da bao cao thi khong bi ping', praise[0].embeds[0].data.description.includes('@'), false);
+  const t1 = await ensureDayThread(client, cfg, '2025-09-03');
+  check('tao thread cho ngay moi', t1?.name, '📅 03/09 (T4)');
+  check('nho id thread vao DB', db.getDayThreadId(G, '2025-09-03'), t1.id);
 
-// Cuoi tuan (chu nhat 07/09) -> khong nhac vi che do weekdays.
-const weekendNudge = [];
-await _internals.sendDailyReminder(fakeClient(weekendNudge), guildCfg, { lastCall: false, today: '2025-09-07' });
-check('cuoi tuan khong bi nhac', weekendNudge.length, 0);
+  const t2 = await ensureDayThread(client, cfg, '2025-09-03');
+  check('goi lai khong tao thread trung', threads.size, 1);
+  check('dung lai dung thread cu', t2.id, t1.id);
 
-// Tong ket tuan: 1 mo dau + 1 review/nguoi + 1 nhac /weekly plan.
-const weekly = [];
-await _internals.runWeeklyForGuild(fakeClient(weekly), guildCfg, '2025-09-07');
-check('tong ket tuan gui 3 tin', weekly.length, 3);
-check('bao AI chua bat', weekly[1].content.includes('GEMINI_API_KEY'), true);
-check('ket bang loi nhac ke hoach tuan sau', weekly[2].embeds[0].data.title.includes('Vòng lặp tiếp theo'), true);
+  const t3 = await ensureDayThread(client, cfg, '2025-09-04');
+  check('ngay khac -> thread khac', t3.id !== t1.id, true);
+
+  t1.archived = true;
+  const t4 = await ensureDayThread(client, cfg, '2025-09-03');
+  check('thread bi luu tru thi mo lai', t4.archived, false);
+}
+
+/* ------------------------------------------------- tat che do thread */
+{
+  const { client } = fakeDiscord();
+  db.updateGuildConfig(G, { use_threads: 0 });
+  const cfg = db.getGuildConfig(G);
+  check('tat threads -> khong tao thread', await ensureDayThread(client, cfg, '2025-09-05'), null);
+  const dest = await dayDestination(client, cfg, '2025-09-05');
+  check('tat threads -> lui ve kenh', [dest.isThread, dest.target.id], [false, 'chan-1']);
+  db.updateGuildConfig(G, { use_threads: 1 });
+}
+
+/* ------------------------------- thread loi (thieu quyen) -> lui ve kenh */
+{
+  const { client, channel } = fakeDiscord();
+  channel.threads.create = async () => { throw new Error('Missing Permissions'); };
+  const dest = await dayDestination(client, db.getGuildConfig(G), '2025-09-06');
+  check('tao thread that bai -> van dang duoc ra kenh', [dest.isThread, dest.target.id], [false, 'chan-1']);
+}
+
+/* --------------------------------------------------------- nhac nho */
+{
+  const { client, sent } = fakeDiscord();
+  const cfg = db.getGuildConfig(G);
+
+  await _internals.sendDailyReminder(client, cfg, { lastCall: false, today: '2025-09-03' });
+  check('gui dung 1 loi nhac', sent.length, 1);
+  check('loi nhac nam trong thread cua ngay', sent[0].where.startsWith('thread-'), true);
+  check('loi nhac ping dung user', sent[0].embeds[0].data.description.includes(`<@${U}>`), true);
+
+  sent.length = 0;
+  await _internals.sendDailyReminder(client, cfg, { lastCall: false, today: '2025-09-02' });
+  check('da bao cao thi khong bi ping', sent[0].embeds[0].data.description.includes('@'), false);
+
+  sent.length = 0;
+  await _internals.sendDailyReminder(client, cfg, { lastCall: false, today: '2025-09-07' });
+  check('cuoi tuan khong bi nhac', sent.length, 0);
+}
+
+/* ----------------------------------------------------- tong ket tuan */
+{
+  const { client, sent } = fakeDiscord();
+  await _internals.runWeeklyForGuild(client, db.getGuildConfig(G), '2025-09-07');
+  check('tong ket tuan gui 3 tin', sent.length, 3);
+  check('tong ket tuan dang o KENH chinh, khong chui vao thread', sent.every((m) => m.where === 'channel'), true);
+  check('bao AI chua bat', sent[1].content.includes('GEMINI_API_KEY'), true);
+  check('ket bang loi nhac ke hoach tuan sau', sent[2].embeds[0].data.title.includes('Vòng lặp tiếp theo'), true);
+}
 
 if (failures) {
   console.error(`❌ ${failures} kiểm tra thất bại`);

@@ -12,11 +12,14 @@ import { addDays, hourOfDay, logicalDate, prettyDate } from '../dates.js';
 import {
   addXp,
   getDaily,
+  getGuildConfig,
   listDailyDates,
   recordBestStreak,
   saveDaily,
+  setDailyMessageId,
   touchUser,
 } from '../db.js';
+import { dayDestination } from '../threads.js';
 import { computeStreak, levelProgress, progressBar, scoreDaily, streakBadge } from '../xp.js';
 import { COLORS } from '../review.js';
 
@@ -193,7 +196,45 @@ async function submit(interaction, { date, done, nextPlan, blocker }) {
     },
   );
 
-  return interaction.reply({ embeds: [embed] });
+  return publish(interaction, { embed, date, isEdit, xp: total, streak });
+}
+
+/**
+ * Báo cáo được đăng công khai vào thread của ngày hôm đó, còn người gõ lệnh
+ * chỉ nhận một dòng xác nhận riêng — tránh cùng một nội dung xuất hiện hai lần.
+ * Sửa báo cáo thì chỉnh lại đúng tin nhắn cũ chứ không đăng thêm.
+ */
+async function publish(interaction, { embed, date, isEdit, xp, streak }) {
+  const guildCfg = getGuildConfig(interaction.guildId);
+  const { target } = await dayDestination(interaction.client, guildCfg, date);
+
+  // Chưa cấu hình kênh, hoặc đang gõ ngay trong chính thread đó -> trả lời tại chỗ.
+  if (!target || target.id === interaction.channelId) {
+    return interaction.reply({ embeds: [embed] });
+  }
+
+  const known = getDaily(interaction.guildId, interaction.user.id, date)?.message_id;
+  let posted = null;
+
+  if (isEdit && known) {
+    posted = await target.messages.fetch(known).then((m) => m.edit({ embeds: [embed] })).catch(() => null);
+  }
+  if (!posted) {
+    posted = await target.send({ embeds: [embed] }).catch(() => null);
+  }
+  if (!posted) {
+    // Không đăng được (thiếu quyền chẳng hạn) -> ít nhất người gõ vẫn thấy kết quả.
+    return interaction.reply({ embeds: [embed] });
+  }
+
+  setDailyMessageId(interaction.guildId, interaction.user.id, date, posted.id);
+
+  return interaction.reply({
+    content:
+      `${isEdit ? '✏️ Đã cập nhật' : '✅ Đã ghi nhận'} báo cáo ${prettyDate(date)} · ` +
+      `**+${xp} XP** · streak **${streak}**\n→ ${posted.url}`,
+    flags: MessageFlags.Ephemeral,
+  });
 }
 
 function formatBreakdown(b) {

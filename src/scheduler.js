@@ -21,6 +21,7 @@ import {
 import { computeStreak, streakBadge } from './xp.js';
 import { COLORS, runWeeklyReview } from './review.js';
 import { isAiEnabled } from './ai.js';
+import { dayDestination } from './threads.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -44,7 +45,8 @@ function pendingUsers(guildId, today) {
 async function sendDailyReminder(client, guildCfg, { lastCall, today = logicalDate() }) {
   if (!isRequiredDay(today)) return;
 
-  const channel = await fetchChannel(client, guildCfg.channel_id);
+  // Nhắc trong thread của ngày: ping vẫn báo như thường, mà kênh chính không bị dồn tin.
+  const { target: channel } = await dayDestination(client, guildCfg, today);
   if (!channel) return;
 
   const pending = pendingUsers(guildCfg.guild_id, today);
