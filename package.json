@@ -1,0 +1,22 @@
+{
+  "name": "tro-ly-kute",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Discord bot: bao cao daily, streak, XP, danh gia tuan bang AI theo phong cach HR",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "deploy": "node src/deploy-commands.js",
+    "start": "node --no-warnings=ExperimentalWarning src/index.js",
+    "dev": "node --no-warnings=ExperimentalWarning --watch src/index.js",
+    "test": "node --no-warnings=ExperimentalWarning scripts/selftest.js",
+    "check-ai": "node --no-warnings=ExperimentalWarning scripts/check-ai.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5",
+    "node-cron": "^3.0.3"
+  }
+}
