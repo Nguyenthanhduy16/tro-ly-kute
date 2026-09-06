@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS users (
   xp          INTEGER NOT NULL DEFAULT 0,
   best_streak INTEGER NOT NULL DEFAULT 0,
   active      INTEGER NOT NULL DEFAULT 1,
+  rank_key    TEXT,
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (guild_id, user_id)
 );
@@ -62,6 +63,13 @@ CREATE TABLE IF NOT EXISTS weekly_reviews (
   UNIQUE (guild_id, user_id, week_start)
 );
 
+CREATE TABLE IF NOT EXISTS rank_roles (
+  guild_id TEXT NOT NULL,
+  rank_key TEXT NOT NULL,
+  role_id  TEXT NOT NULL,
+  PRIMARY KEY (guild_id, rank_key)
+);
+
 CREATE TABLE IF NOT EXISTS day_threads (
   guild_id   TEXT NOT NULL,
   thread_date TEXT NOT NULL,
@@ -82,6 +90,10 @@ CREATE TABLE IF NOT EXISTS guild_config (
   updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 `);
+
+if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'rank_key')) {
+  db.exec('ALTER TABLE users ADD COLUMN rank_key TEXT');
+}
 
 if (!db.prepare('PRAGMA table_info(dailies)').all().some((c) => c.name === 'message_id')) {
   db.exec('ALTER TABLE dailies ADD COLUMN message_id TEXT');
@@ -262,6 +274,23 @@ export function updateGuildConfig(guildId, patch) {
   const assignments = fields.map((f) => `${f}=?`).join(', ');
   q(`UPDATE guild_config SET ${assignments}, updated_at=datetime('now') WHERE guild_id=?`)
     .run(...fields.map((f) => patch[f]), guildId);
+}
+
+/* -------------------------------------------------------- role cap bac */
+
+export function getRankRoleId(guildId, rankKey) {
+  return q('SELECT role_id FROM rank_roles WHERE guild_id=? AND rank_key=?')
+    .get(guildId, rankKey)?.role_id ?? null;
+}
+
+export function saveRankRoleId(guildId, rankKey, roleId) {
+  q(`INSERT INTO rank_roles (guild_id, rank_key, role_id) VALUES (?,?,?)
+     ON CONFLICT(guild_id, rank_key) DO UPDATE SET role_id=excluded.role_id`)
+    .run(guildId, rankKey, roleId);
+}
+
+export function setUserRank(guildId, userId, rankKey) {
+  q('UPDATE users SET rank_key=? WHERE guild_id=? AND user_id=?').run(rankKey, guildId, userId);
 }
 
 /* ------------------------------------------------------- thread theo ngay */

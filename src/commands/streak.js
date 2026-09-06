@@ -3,11 +3,20 @@ import { addDays, isRequiredDay, logicalDate, prettyDate } from '../dates.js';
 import { getUser, listDailyDates, listRecentDailies, touchUser } from '../db.js';
 import { computeStreak, levelProgress, progressBar, streakBadge } from '../xp.js';
 import { COLORS } from '../review.js';
+import { nextRank, rankFor } from '../ranks.js';
 
 export const data = new SlashCommandBuilder()
   .setName('streak')
   .setDescription('Xem streak, XP và mức độ chuyên cần')
   .addUserOption((o) => o.setName('user').setDescription('Xem của ai (mặc định: bạn)'));
+
+function rankLine(xp) {
+  const current = rankFor(xp);
+  const upcoming = nextRank(xp);
+  const now = current ? `**${current.name}**` : '*chưa có màu*';
+  const then = upcoming ? ` → ${upcoming.rank.name} còn **${upcoming.missing}** XP` : ' — cấp cao nhất';
+  return now + then;
+}
 
 export async function execute(interaction) {
   const target = interaction.options.getUser('user') ?? interaction.user;
@@ -49,6 +58,10 @@ export async function execute(interaction) {
       {
         name: `Level ${prog.level} · ${user.xp} XP`,
         value: `${progressBar(prog.into, prog.need, 16)}  còn **${prog.need - prog.into}** XP tới level ${prog.level + 1}`,
+      },
+      {
+        name: 'Cấp bậc',
+        value: rankLine(user.xp),
       },
     )
     .setFooter({

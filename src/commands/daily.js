@@ -13,6 +13,7 @@ import {
   addXp,
   getDaily,
   getGuildConfig,
+  getUser,
   listDailyDates,
   recordBestStreak,
   saveDaily,
@@ -20,6 +21,7 @@ import {
   touchUser,
 } from '../db.js';
 import { dayDestination } from '../threads.js';
+import { nextRank, syncRank } from '../ranks.js';
 import { computeStreak, levelProgress, progressBar, scoreDaily, streakBadge } from '../xp.js';
 import { COLORS } from '../review.js';
 
@@ -161,6 +163,8 @@ async function submit(interaction, { date, done, nextPlan, blocker }) {
     onTime,
   });
 
+  const previousRank = getUser(guildId, userId)?.rank_key ?? null;
+
   if (!isEdit) {
     addXp(guildId, userId, total);
     recordBestStreak(guildId, userId, streak);
@@ -168,6 +172,10 @@ async function submit(interaction, { date, done, nextPlan, blocker }) {
 
   const user = touchUser(guildId, userId, displayName);
   const prog = levelProgress(user.xp);
+
+  const promotion = isEdit
+    ? { promoted: false, rank: null }
+    : await syncRank(interaction.guild, userId, user.xp, previousRank);
 
   const embed = new EmbedBuilder()
     .setColor(isEdit ? COLORS.neutral : COLORS.ok)
@@ -196,7 +204,7 @@ async function submit(interaction, { date, done, nextPlan, blocker }) {
     },
   );
 
-  return publish(interaction, { embed, date, isEdit, xp: total, streak });
+  return publish(interaction, { embed, date, isEdit, xp: total, streak, promotion, displayName, totalXp: user.xp });
 }
 
 /**
@@ -204,7 +212,20 @@ async function submit(interaction, { date, done, nextPlan, blocker }) {
  * chỉ nhận một dòng xác nhận riêng — tránh cùng một nội dung xuất hiện hai lần.
  * Sửa báo cáo thì chỉnh lại đúng tin nhắn cũ chứ không đăng thêm.
  */
-async function publish(interaction, { embed, date, isEdit, xp, streak }) {
+function promotionEmbed({ displayName, rank, totalXp }) {
+  const upcoming = nextRank(totalXp);
+  return new EmbedBuilder()
+    .setColor(rank.color)
+    .setTitle(`🎉 ${displayName} vừa lên ${rank.name}`)
+    .setDescription(
+      'Tên của bạn trong server từ giờ mang màu này.\n' +
+        (upcoming
+          ? `Cấp kế tiếp: **${upcoming.rank.name}** — còn **${upcoming.missing} XP**.`
+          : 'Đây là cấp cao nhất. Không còn gì để leo, chỉ còn giữ.'),
+    );
+}
+
+async function publish(interaction, { embed, date, isEdit, xp, streak, promotion, displayName, totalXp }) {
   const guildCfg = getGuildConfig(interaction.guildId);
   const { target } = await dayDestination(interaction.client, guildCfg, date);
 
@@ -228,6 +249,12 @@ async function publish(interaction, { embed, date, isEdit, xp, streak }) {
   }
 
   setDailyMessageId(interaction.guildId, interaction.user.id, date, posted.id);
+
+  if (promotion?.promoted) {
+    await target
+      .send({ embeds: [promotionEmbed({ displayName, rank: promotion.rank, totalXp })] })
+      .catch(() => null);
+  }
 
   return interaction.reply({
     content:

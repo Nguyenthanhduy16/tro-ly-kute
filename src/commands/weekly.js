@@ -8,7 +8,8 @@ import {
   TextInputStyle,
 } from 'discord.js';
 import { addDays, logicalDate, prettyRange, weekStartOf, weekdayOf } from '../dates.js';
-import { addXp, getPlan, savePlan, touchUser } from '../db.js';
+import { addXp, getPlan, getUser, savePlan, touchUser } from '../db.js';
+import { syncRank } from '../ranks.js';
 import { XP } from '../xp.js';
 import { COLORS, collectWeek, runWeeklyReview, weekStrip } from '../review.js';
 import { isAiEnabled } from '../ai.js';
@@ -112,7 +113,11 @@ export async function handleModal(interaction) {
   const award = existing?.xp_awarded ? 0 : XP.WEEKLY_PLAN;
 
   savePlan(guildId, userId, weekStart, plan, 1); // xp_awarded chỉ ghi lúc INSERT đầu tiên
-  if (award) addXp(guildId, userId, award);
+  if (award) {
+    const previousRank = getUser(guildId, userId)?.rank_key ?? null;
+    addXp(guildId, userId, award);
+    await syncRank(interaction.guild, userId, getUser(guildId, userId).xp, previousRank);
+  }
 
   const embed = new EmbedBuilder()
     .setColor(COLORS.info)

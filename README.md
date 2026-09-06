@@ -29,10 +29,10 @@ Chủ nhật 20:00 → bot tự tổng hợp, so cam kết với thực tế,
 5. Mời bot vào server bằng link sau (thay `CLIENT_ID` bằng Application ID của bạn):
 
 ```
-https://discord.com/api/oauth2/authorize?client_id=CLIENT_ID&permissions=309237663744&scope=bot%20applications.commands
+https://discord.com/api/oauth2/authorize?client_id=CLIENT_ID&permissions=309506099200&scope=bot%20applications.commands
 ```
 
-`permissions=309237663744` = Send Messages + Embed Links + Create Public Threads +
+`permissions=309506099200` = Send Messages + Embed Links + Create Public Threads +
 Send Messages in Threads. Không xin gì thừa — không đọc tin nhắn, không xoá gì.
 
 ### 2. Lấy key cho phần AI review
@@ -105,6 +105,29 @@ và đó là thứ đáng để nhìn thấy.
 
 Không thích thread thì tắt: `/setup set threads:False` — mọi thứ quay lại đăng thẳng ra kênh.
 
+## Cấp bậc đổi màu tên
+
+Đạt mốc XP thì bot gán role tương ứng và **tên bạn trong danh sách thành viên đổi màu**.
+Mỗi người luôn giữ đúng một role cấp bậc — lên cấp là role cũ tự gỡ.
+
+| Cấp | Từ | Ước lượng |
+|---|---|---|
+| 🌱 Mầm | 40 XP | ~2 ngày |
+| ⚡ Đều đặn | 160 XP | ~1,5 tuần |
+| 🔥 Bền bỉ | 360 XP | ~3 tuần |
+| 💎 Kỷ luật | 640 XP | ~6 tuần |
+| 🏆 Thép | 1.000 XP | ~2 tháng |
+| 👑 Huyền thoại | 1.960 XP | ~4 tháng |
+
+Level 1 cố ý không có màu: ai cũng bắt đầu xám, màu là thứ phải kiếm. Khoảng cách giữa
+các cấp nới dần nên cấp cao không mất giá sau vài tháng.
+
+Bật bằng `/setup roles` (cần quyền Manage Server). Bot chỉ tạo role khi bạn gõ lệnh này —
+không tự ý thêm gì vào server. Role đặt `hoist: false`, tức **chỉ đổi màu tên** chứ không
+tách thành mục riêng trong danh sách thành viên, tránh làm rối sidebar.
+
+Muốn đổi tên cấp, mốc XP hay màu thì sửa mảng `RANKS` ở đầu [`src/ranks.js`](src/ranks.js).
+
 ## Các lệnh
 
 | Lệnh | Việc nó làm |
@@ -118,6 +141,7 @@ Không thích thread thì tắt: `/setup set threads:False` — mọi thứ quay
 | `/streak` | Streak, XP, level, dải 14 ngày gần nhất |
 | `/leaderboard` | BXH XP theo tuần / 30 ngày / toàn thời gian |
 | `/history` | Đọc lại các báo cáo cũ |
+| `/setup roles` | Tạo role cấp bậc đổi màu tên |
 | `/setup pause` \| `/setup resume` | Tự tắt/bật nhắc nhở cho riêng mình |
 
 Nộp lại `/daily` cho ngày đã có báo cáo = **sửa** báo cáo đó, không cộng XP lần hai.
@@ -176,11 +200,12 @@ src/
   dates.js          mọi phép tính ngày theo múi giờ + "ngày làm việc"
   db.js             schema SQLite (node:sqlite, không cần build native)
   xp.js             streak, XP, level — hàm thuần, có test
+  ranks.js          cấp bậc, tạo và gán role đổi màu tên
   ai.js             prompt HR + lớp provider (OpenRouter / Gemini)
   review.js         gom dữ liệu tuần, dựng embed đánh giá
   scheduler.js      một cron mỗi giờ, đọc cấu hình từng server
   commands/         mỗi lệnh một file
-scripts/selftest.js  63 kiểm tra logic, chạy `npm test`, không cần Discord
+scripts/selftest.js  81 kiểm tra logic, chạy `npm test`, không cần Discord
 scripts/check-ai.js  chẩn đoán key + model, chạy `npm run check-ai`
 scripts/send-reminder.js  bắn lời nhắc thủ công, chạy `npm run remind`
 data/bot.db          dữ liệu (đã gitignore)

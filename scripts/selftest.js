@@ -107,6 +107,72 @@ console.log('\n--- Prompt gửi cho Gemini (xem thử) ---\n');
 console.log(prompt);
 console.log('\n---------------------------------------\n');
 
+/* ------------------------------------------------------------ cap bac / role */
+const ranks = await import('../src/ranks.js');
+
+check('0 XP chua co cap', ranks.rankFor(0), null);
+check('39 XP van chua co cap', ranks.rankFor(39), null);
+check('40 XP -> Mam', ranks.rankFor(40).key, 'mam');
+check('159 XP van la Mam', ranks.rankFor(159).key, 'mam');
+check('160 XP -> Deu dan', ranks.rankFor(160).key, 'deu');
+check('1000 XP -> Thep', ranks.rankFor(1000).key, 'thep');
+check('5000 XP van la cap dinh', ranks.rankFor(5000).key, 'huyenthoai');
+check('nguong cac cap tang dan', ranks.RANKS.map(ranks.xpForRank), [40, 160, 360, 640, 1000, 1960]);
+check('cap ke tiep tu 0 XP', [ranks.nextRank(0).rank.key, ranks.nextRank(0).missing], ['mam', 40]);
+check('cap ke tiep tu 200 XP', [ranks.nextRank(200).rank.key, ranks.nextRank(200).missing], ['ben', 160]);
+check('dat dinh thi khong con cap ke tiep', ranks.nextRank(5000), null);
+check('moi cap mot mau rieng', new Set(ranks.RANKS.map((r) => r.color)).size, ranks.RANKS.length);
+
+// Tao role: lan dau tao du 6, lan hai khong tao trung.
+function fakeGuild({ canManage = true, botPosition = 100 } = {}) {
+  const roles = new Map();
+  let n = 0;
+  const guild = {
+    id: G,
+    roles: {
+      cache: roles,
+      create: async ({ name, color }) => {
+        const role = { id: `role-${++n}`, name, color, position: 10 };
+        roles.set(role.id, role);
+        return role;
+      },
+    },
+    members: {
+      me: {
+        permissions: { has: (p) => (p === 'ManageRoles' ? canManage : true) },
+        roles: { highest: { position: botPosition } },
+      },
+    },
+  };
+  roles.find = (fn) => [...roles.values()].find(fn);
+  return guild;
+}
+
+{
+  const guild = fakeGuild();
+  const first = await ranks.ensureRankRoles(guild);
+  check('tao du 6 role lan dau', [first.created.length, first.error], [6, null]);
+  check('luu id role vao DB', Boolean(db.getRankRoleId(G, 'mam')), true);
+
+  const second = await ranks.ensureRankRoles(guild);
+  check('goi lai khong tao role trung', [second.created.length, second.existing.length], [0, 6]);
+  check('khong co van de ve quyen', ranks.rankRoleProblems(guild), []);
+}
+
+{
+  const guild = fakeGuild({ canManage: false });
+  await ranks.ensureRankRoles(guild);
+  check('thieu quyen -> bao Manage Roles', ranks.rankRoleProblems(guild)[0].includes('Manage Roles'), true);
+}
+
+{
+  // Role bot nam duoi role cap bac -> Discord se tu choi gan.
+  const guild = fakeGuild({ botPosition: 5 });
+  await ranks.ensureRankRoles(guild);
+  const problems = ranks.rankRoleProblems(guild);
+  check('role bot qua thap -> canh bao thu tu', problems.some((p) => p.includes('kéo role của bot lên trên')), true);
+}
+
 /* ------------------------------------------- modal & embed hợp lệ với Discord */
 const { buildModal } = await import('../src/commands/daily.js');
 const { buildPlanModal } = await import('../src/commands/weekly.js');
