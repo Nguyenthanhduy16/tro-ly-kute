@@ -182,7 +182,7 @@ src/
   commands/         mỗi lệnh một file
 scripts/selftest.js  63 kiểm tra logic, chạy `npm test`, không cần Discord
 scripts/check-ai.js  chẩn đoán key + model, chạy `npm run check-ai`
-scripts/send-reminder.js  ban loi nhac thu cong, chay npm run remind
+scripts/send-reminder.js  bắn lời nhắc thủ công, chạy `npm run remind`
 data/bot.db          dữ liệu (đã gitignore)
 ```
 
