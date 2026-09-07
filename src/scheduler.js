@@ -18,7 +18,7 @@ import {
   usersWithPlan,
   usersWithDailiesBetween,
 } from './db.js';
-import { computeStreak, streakBadge } from './xp.js';
+import { XP, computeStreak, streakBadge } from './xp.js';
 import { COLORS, runWeeklyReview } from './review.js';
 import { isAiEnabled } from './ai.js';
 import { dayDestination } from './threads.js';
@@ -141,15 +141,51 @@ async function runWeeklyForGuild(client, guildCfg, today = logicalDate()) {
     });
     if (isAiEnabled()) await sleep(4000); // nhẹ tay với free tier của Gemini
   }
+}
+
+/**
+ * Ngay sau bản tổng kết: gọi tên những ai chưa chốt kế hoạch cho tuần sắp tới.
+ *
+ * Chạy tách khỏi `runWeeklyForGuild` chứ không nằm trong đó, vì bản tổng kết
+ * thoát sớm khi cả tuần không ai báo cáo gì — mà đúng cái tuần im ắng ấy mới là
+ * tuần cần lời nhắc nhất.
+ */
+async function sendWeeklyPlanReminder(client, guildCfg, today = logicalDate()) {
+  const channel = await fetchChannel(client, guildCfg.channel_id);
+  if (!channel) return;
+
+  const roster = listActiveUsers(guildCfg.guild_id);
+  if (!roster.length) return;
+
+  // Kế hoạch chốt tối nay là cho tuần chứa NGÀY MAI: tối Chủ nhật thì đó là
+  // tuần bắt đầu sáng mai, còn nếu server dời lịch sang giữa tuần thì là tuần đang chạy.
+  const weekStart = weekStartOf(addDays(today, 1));
+  const weekEnd = addDays(weekStart, 6);
+  const planned = new Set(usersWithPlan(guildCfg.guild_id, weekStart));
+  const pending = roster.filter((u) => !planned.has(u.user_id));
+
+  if (!pending.length) {
+    await channel.send({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(COLORS.ok)
+          .setTitle(`📋 Tuần ${prettyRange(weekStart, weekEnd)} đã có kế hoạch`)
+          .setDescription('Cả nhóm đã chốt cam kết. Sáng mai cứ thế mà chạy.'),
+      ],
+    });
+    return;
+  }
 
   await channel.send({
     embeds: [
       new EmbedBuilder()
-        .setColor(COLORS.info)
-        .setTitle('🔁 Vòng lặp tiếp theo')
+        .setColor(COLORS.warn)
+        .setTitle(`🔁 Chốt kế hoạch tuần ${prettyRange(weekStart, weekEnd)}`)
         .setDescription(
-          'Đọc xong nhận xét rồi thì chốt luôn cam kết cho tuần tới bằng `/weekly plan` (+25 XP).\n' +
-            'Tuần sau trợ lý sẽ lấy đúng bản kế hoạch đó ra đối chiếu với những gì bạn thật sự làm.',
+          `${pending.map((u) => `<@${u.user_id}>`).join(' ')}\n\n` +
+            `Gõ \`/weekly plan\` để chốt cam kết cho tuần tới (**+${XP.WEEKLY_PLAN} XP**).\n` +
+            'Không cam kết gì thì Chủ nhật sau trợ lý chỉ đếm được bạn viết bao nhiêu dòng, ' +
+            'chứ không biết bạn có làm đúng thứ đã hứa hay không.',
         ),
     ],
   });
@@ -173,6 +209,7 @@ export function startScheduler(client) {
           }
           if (hour === guildCfg.weekly_hour && weekdayOf(today) === guildCfg.weekly_dow) {
             await runWeeklyForGuild(client, guildCfg, today);
+            await sendWeeklyPlanReminder(client, guildCfg, today);
           }
         } catch (err) {
           console.error(`[scheduler] guild ${guildCfg.guild_id}:`, err);
@@ -186,4 +223,4 @@ export function startScheduler(client) {
   return task;
 }
 
-export const _internals = { sendDailyReminder, runWeeklyForGuild };
+export const _internals = { sendDailyReminder, runWeeklyForGuild, sendWeeklyPlanReminder };

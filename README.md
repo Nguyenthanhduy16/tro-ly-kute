@@ -13,7 +13,8 @@ mỗi ngày → /daily        ghi việc đã làm (+10-31 XP, streak tăng)
    ↓         bot nhắc lúc 21:00, gọi lần cuối 23:00 nếu chưa nộp
    ↓
 Chủ nhật 20:00 → bot tự tổng hợp, so cam kết với thực tế,
-                 chấm điểm /10 và giao 3 việc cụ thể cho tuần sau
+                 chấm điểm /10 và giao 3 việc cụ thể cho tuần sau,
+                 rồi gọi tên ai chưa chốt kế hoạch cho tuần tới
    ↓
    └──────────→ /weekly plan cho tuần mới
 ```
@@ -104,6 +105,12 @@ Nộp lại `/daily` cho ngày đó thì bot **sửa đúng bài cũ** chứ kh�
 
 Đánh giá tuần cố ý đăng ra kênh chính chứ không chui vào thread: mỗi tuần một lần,
 và đó là thứ đáng để nhìn thấy.
+
+Ngay sau bản đánh giá, bot đăng tiếp một lời nhắc **gọi đích danh những ai chưa chốt
+`/weekly plan` cho tuần sắp tới**. Lời nhắc này chạy tách khỏi bản đánh giá: tuần nào
+cả nhóm im ắng, không ai báo cáo gì thì bản đánh giá không có gì để viết và im lặng
+bỏ qua — nhưng đúng cái tuần ấy mới là tuần cần một lời gọi dậy, nên lời nhắc vẫn đăng.
+Cả nhóm đã chốt đủ thì nó chỉ báo một dòng gọn.
 
 Không thích thread thì tắt: `/setup set threads:False` — mọi thứ quay lại đăng thẳng ra kênh.
 
@@ -286,7 +293,7 @@ src/
   scheduler.js      một cron mỗi giờ, đọc cấu hình từng server
   commands/         mỗi lệnh một file
   commands/note-save.js  menu chuột phải "Lưu vào ghi chú"
-scripts/selftest.js  145 kiểm tra logic, chạy `npm test`, không cần Discord
+scripts/selftest.js  158 kiểm tra logic, chạy `npm test`, không cần Discord
 scripts/check-ai.js  chẩn đoán key + model, chạy `npm run check-ai`
 scripts/send-reminder.js  bắn lời nhắc thủ công, chạy `npm run remind`
 data/bot.db          dữ liệu (đã gitignore)

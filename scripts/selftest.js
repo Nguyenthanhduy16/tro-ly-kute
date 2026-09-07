@@ -385,10 +385,52 @@ db.updateGuildConfig(G, { channel_id: 'chan-1' });
 {
   const { client, sent } = fakeDiscord();
   await _internals.runWeeklyForGuild(client, db.getGuildConfig(G), '2025-09-07');
-  check('tong ket tuan gui 3 tin', sent.length, 3);
+  check('tong ket tuan gui 2 tin', sent.length, 2);
   check('tong ket tuan dang o KENH chinh, khong chui vao thread', sent.every((m) => m.where === 'channel'), true);
   check('bao AI chua bat', sent[1].content.includes('GEMINI_API_KEY'), true);
-  check('ket bang loi nhac ke hoach tuan sau', sent[2].embeds[0].data.title.includes('Vòng lặp tiếp theo'), true);
+}
+
+/* ------------------------------------------ nhac chot ke hoach tuan sau */
+{
+  const CN = '2025-09-07'; // Chu nhat; tuan sau bat dau thu 2 08/09
+  const nextWeek = '2025-09-08';
+
+  {
+    const { client, sent } = fakeDiscord();
+    await _internals.sendWeeklyPlanReminder(client, db.getGuildConfig(G), CN);
+    check('toi CN goi ten nguoi chua chot ke hoach', sent.length, 1);
+    check('nhac o KENH chinh chu khong chui vao thread', sent[0].where, 'channel');
+    check('nhac dung tuan BAT DAU SANG MAI', sent[0].embeds[0].data.title.includes('08/09'), true);
+    check('ping dich danh nguoi chua co ke hoach', sent[0].embeds[0].data.description.includes(`<@${U}>`), true);
+    check('noi ro duoc bao nhieu XP', sent[0].embeds[0].data.description.includes('+25 XP'), true);
+  }
+
+  {
+    // Da chot ke hoach cho tuan sau -> khong bi goi ten nua.
+    db.savePlan(G, U, nextWeek, 'ke hoach tuan sau', 1);
+    const { client, sent } = fakeDiscord();
+    await _internals.sendWeeklyPlanReminder(client, db.getGuildConfig(G), CN);
+    check('ai chot roi thi khong bi nhac', sent[0].embeds[0].data.title.includes('đã có kế hoạch'), true);
+    check('khong ping ai nua', sent[0].embeds[0].data.description.includes('<@'), false);
+  }
+
+  {
+    // Tuan im ang, khong ai bao cao gi -> tong ket im lang nhung van phai nhac.
+    const { client, sent } = fakeDiscord();
+    await _internals.runWeeklyForGuild(client, db.getGuildConfig(G), '2025-10-05');
+    check('tuan trong thi khong tong ket', sent.length, 0);
+    await _internals.sendWeeklyPlanReminder(client, db.getGuildConfig(G), '2025-10-05');
+    check('tuan trong van nhac chot ke hoach', sent.length, 1);
+  }
+
+  {
+    // Khong con ai trong danh sach -> im hoan toan, khong noi vao khoang khong.
+    db.setActive(G, U, false);
+    const { client, sent } = fakeDiscord();
+    await _internals.sendWeeklyPlanReminder(client, db.getGuildConfig(G), CN);
+    check('khong co ai thi khong nhac', sent.length, 0);
+    db.setActive(G, U, true);
+  }
 }
 
 /* --------------------------------------------------------------- ghi chú */
