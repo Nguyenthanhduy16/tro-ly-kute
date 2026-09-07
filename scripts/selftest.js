@@ -13,6 +13,11 @@ const { computeStreak, scoreDaily, levelProgress, XP } = await import('../src/xp
 const { weekStartOf, previousExpectedDay } = await import('../src/dates.js');
 const db = await import('../src/db.js');
 const { collectWeek, weekStrip } = await import('../src/review.js');
+const notes = await import('../src/notes.js');
+const noteSave = await import('../src/commands/note-save.js');
+const { messageText } = noteSave;
+const note = await import('../src/commands/note.js');
+const { MessageFlags } = await import('discord.js');
 const { buildReviewPrompt } = await import('../src/ai.js');
 
 let failures = 0;
@@ -181,6 +186,7 @@ check('mau dau bang trung mau goc cua cap', ranks.RANKS.every((r) => shimmer.SHI
 check('mau lap lai theo chu ky', shimmer.shimmerColor('ben', 0), shimmer.shimmerColor('ben', 3));
 check('nhip ke tiep doi mau', shimmer.shimmerColor('ben', 0) !== shimmer.shimmerColor('ben', 1), true);
 check('cap khong ton tai -> khong co mau', shimmer.shimmerColor('khong-co', 0), null);
+check('bot co bang mau rieng', shimmer.SHIMMER_PALETTES[ranks.BOT_ROLE.key][0], ranks.BOT_ROLE.color);
 
 // Chi doi mau cap dang co nguoi deo: khong ai deo -> khong request nao.
 {
@@ -203,6 +209,12 @@ check('cap khong ton tai -> khong co mau', shimmer.shimmerColor('khong-co', 0), 
   check('co nguoi deo -> doi dung 1 role', await shimmer.shimmerTick(fakeClient, 1), 1);
   check('doi sang dung mau cua nhip do', calls[0][1], shimmer.shimmerColor('ben', 1));
   db.setUserRank(G, U, null);
+
+  // Role mau cua chinh bot chay doc lap, khong phu thuoc co ai dat cap hay chua.
+  db.saveRankRoleId(G, ranks.BOT_ROLE.key, 'role-bot');
+  calls.length = 0;
+  check('chua ai co cap nhung bot van doi mau', await shimmer.shimmerTick(fakeClient, 1), 1);
+  check('bot doi theo bang mau cua no', calls[0][1], shimmer.shimmerColor(ranks.BOT_ROLE.key, 1));
 }
 
 /* ------------------------------------------- modal & embed hợp lệ với Discord */
@@ -377,6 +389,235 @@ db.updateGuildConfig(G, { channel_id: 'chan-1' });
   check('tong ket tuan dang o KENH chinh, khong chui vao thread', sent.every((m) => m.where === 'channel'), true);
   check('bao AI chua bat', sent[1].content.includes('GEMINI_API_KEY'), true);
   check('ket bang loi nhac ke hoach tuan sau', sent[2].embeds[0].data.title.includes('Vòng lặp tiếp theo'), true);
+}
+
+/* --------------------------------------------------------------- ghi chú */
+{
+  check('bỏ dấu tiếng Việt, cả chữ đ', notes.fold('Đọc Kỹ Trước Khi Dùng'), 'doc ky truoc khi dung');
+  check('tag ngăn bằng dấu phẩy giữ được cụm hai chữ', notes.normalizeTags('#Học tập, Docker'), ['hoc-tap', 'docker']);
+  check('tag ngăn bằng khoảng trắng trước #', notes.normalizeTags('#hoc #docker'), ['hoc', 'docker']);
+  check('tag trùng chỉ tính một lần', notes.normalizeTags('docker, Docker, DOCKER'), ['docker']);
+  check('tối đa 5 tag', notes.normalizeTags('a,b,c,d,e,f,g').length, 5);
+  check('không có tag thì lưu chuỗi rỗng', notes.tagsToStored([]), '');
+  check('tag lưu kèm dấu phẩy hai đầu', notes.tagsToStored(['a', 'b']), ',a,b,');
+  check('tiêu đề lấy từ dòng đầu, bỏ ký tự markdown', notes.deriveTitle('## Cách dùng volume\nchi tiết'), 'Cách dùng volume');
+
+  const mk = (title, body, tags, opts = {}) =>
+    db.createNote({
+      guildId: G,
+      userId: opts.userId ?? U,
+      title,
+      body,
+      tags: notes.tagsToStored(notes.normalizeTags(tags)),
+      shared: opts.shared ?? false,
+      date: '2025-09-05',
+    });
+
+  const n1 = mk('Docker volume', 'mount thư mục host vào container bằng cờ -v', 'docker');
+  const n2 = mk('Học Rust', 'ownership và borrow checker', 'rust, hoc');
+  const n3 = mk('Ghi chú chung', 'docker compose up -d chạy nền', 'docker, devops', { shared: true });
+  const other = mk('Của người khác', 'redis pipeline', 'redis', { userId: 'user-khac', shared: true });
+  const secret = mk('Riêng người khác', 'không ai thấy', '', { userId: 'user-khac' });
+
+  check('số ghi chú đánh riêng theo từng người', [n1.no, n2.no, n3.no, other.no, secret.no], [1, 2, 3, 1, 2]);
+  check('mặc định ghi chú là riêng tư', n1.shared, 0);
+
+  const mine = { guildId: G, userId: U, scope: 'mine' };
+  const server = { guildId: G, userId: U, scope: 'server' };
+  check('đếm ghi chú của mình', db.countNotes(mine), 3);
+  check('phạm vi server chỉ thấy ghi chú đã chia sẻ', db.countNotes(server), 2);
+  check('lọc theo tag khớp trọn tag', db.countNotes({ ...mine, tag: 'docker' }), 2);
+  check('tag không tồn tại thì không khớp gì', db.countNotes({ ...mine, tag: 'dock' }), 0);
+  check('danh sách mới nhất trước', db.listNotes(mine).map((n) => n.no), [3, 2, 1]);
+  check('phân trang', db.listNotes({ ...mine, limit: 2, offset: 2 }).map((n) => n.no), [1]);
+
+  const search = (q, filter = mine) => notes.matchNotes(db.scanNotes(filter), q).map((n) => n.title);
+  check('tìm không cần gõ dấu', search('hoc rust'), ['Học Rust']);
+  check('tìm không phân biệt hoa thường', search('DOCKER').length, 2);
+  check('khớp tiêu đề được xếp trước khớp nội dung', search('docker')[0], 'Docker volume');
+  check('phải khớp mọi từ khoá', search('docker compose'), ['Ghi chú chung']);
+  check('từ khoá không có thì không trả về gì', search('kubernetes'), []);
+  check('tìm trong phạm vi server thấy cả ghi chú người khác', search('redis', server), ['Của người khác']);
+  check('ghi chú riêng của người khác không lọt vào', search('không ai thấy', server), []);
+  check('câu tìm kiếm rỗng trả về nguyên danh sách', search(''), search('', mine));
+
+  check('đoạn trích bám quanh từ khoá', notes.snippet('a'.repeat(200) + ' docker ' + 'b'.repeat(200), 'docker').includes('docker'), true);
+
+  const edited = db.updateNote(n2.id, { title: 'Rust nâng cao', body: 'lifetimes', tags: ',rust,', shared: true });
+  check('sửa ghi chú giữ nguyên số', edited.no, n2.no);
+  check('sửa xong có thể chuyển sang chia sẻ', db.countNotes(server), 3);
+
+  check('xoá đúng một ghi chú', db.deleteNote(n1.id), 1);
+  check('xoá rồi thì không đếm nữa', db.countNotes(mine), 2);
+  check('số cũ không bị dùng lại', mk('Ghi chú mới', 'nội dung bất kỳ', '').no, 4);
+
+  const tagList = db.noteTagRows(mine).flatMap((r) => notes.storedToTags(r.tags)).sort();
+  check('gom tag từ ghi chú của mình', tagList, ['devops', 'docker', 'rust']);
+
+  check(
+    'lấy được chữ trong tin nhắn kèm embed và file',
+    messageText({
+      content: 'link hay',
+      embeds: [{ title: 'Tiêu đề', description: 'mô tả' }],
+      attachments: new Map([['1', { url: 'https://cdn/x.png' }]]),
+    }),
+    'link hay\n\nTiêu đề\nmô tả\n\nhttps://cdn/x.png',
+  );
+  check('tin nhắn rỗng thì không có gì để lưu', messageText({ content: '   ', embeds: [] }), '');
+}
+
+/* ------------------------------------------------ ghi chú: chạy thật lệnh */
+{
+  const NU = 'user-note-flow';
+
+  function fakeNoteInteraction(sub, opts = {}) {
+    const captured = { replies: [], modals: [], choices: null, deferred: null };
+    const i = {
+      captured,
+      deferred: false,
+      guildId: G,
+      user: { id: NU, username: 'nguoi-ghi-chu', displayAvatarURL: () => 'https://avatar' },
+      member: { displayName: 'Người ghi chú' },
+      guild: {
+        members: {
+          fetch: async () => ({ displayName: 'Ai đó', displayAvatarURL: () => 'https://avatar' }),
+        },
+      },
+      client: { channels: { fetch: async () => null } },
+      options: {
+        getSubcommand: () => sub,
+        getString: (k) => opts[k] ?? null,
+        getBoolean: (k) => (k in opts ? opts[k] : null),
+        getInteger: (k) => opts[k] ?? null,
+        getFocused: () => ({ name: opts._focused ?? 'note', value: opts._typed ?? '' }),
+      },
+      reply: async (payload) => {
+        captured.replies.push(payload);
+        return payload;
+      },
+      update: async (payload) => {
+        captured.replies.push(payload);
+        return payload;
+      },
+      showModal: async (modal) => {
+        captured.modals.push(modal);
+        return modal;
+      },
+      respond: async (choices) => {
+        captured.choices = choices;
+        return choices;
+      },
+      deferReply: async (options = {}) => {
+        captured.deferred = options;
+        i.deferred = true;
+        return options;
+      },
+      editReply: async (payload) => {
+        captured.replies.push(payload);
+        return payload;
+      },
+    };
+    return i;
+  }
+
+  const run = async (sub, opts) => {
+    const i = fakeNoteInteraction(sub, opts);
+    await note.execute(i);
+    return i.captured;
+  };
+
+  let out = await run('add', {
+    content: 'Dùng docker compose watch để hot reload khi sửa code',
+    tags: 'docker, devops',
+  });
+  check('lưu ghi chú xong báo lại số của nó', out.replies[0].content.includes('#1'), true);
+  check('trả lời trước 3 giây rồi mới làm việc nặng', out.deferred !== null, true);
+  check('xác nhận lưu chỉ mình mình thấy', out.deferred.flags, MessageFlags.Ephemeral);
+
+  await run('add', { content: 'Postgres: EXPLAIN ANALYZE đọc từ dưới lên', tags: 'sql' });
+  await run('add', { content: 'Ghi chú cho cả nhóm về quy trình release', share: true });
+
+  out = await run('add', {});
+  check('không gõ nội dung thì mở ô soạn', out.modals.length, 1);
+
+  out = await run('list', {});
+  check('danh sách đếm đủ ghi chú', out.replies[0].embeds[0].data.footer.text.includes('3 ghi chú'), true);
+  check('danh sách hiện số ghi chú của mình', out.replies[0].embeds[0].data.description.includes('`#3`'), true);
+
+  out = await run('list', { tag: 'sql' });
+  check('lọc theo tag chỉ còn một', out.replies[0].embeds[0].data.footer.text.includes('1 ghi chú'), true);
+
+  out = await run('search', { query: 'compose' });
+  check('tìm ra đúng ghi chú', out.replies[0].embeds[0].data.title.includes('1 kết quả'), true);
+
+  out = await run('search', { query: 'kubernetes' });
+  check('không có kết quả thì nói thẳng', out.replies[0].content.includes('Không có ghi chú nào khớp'), true);
+
+  out = await run('show', { note: '#2' });
+  check('mở ghi chú theo số', out.replies[0].embeds[0].data.title.includes('#2'), true);
+
+  out = await run('show', { note: 'explain analyze' });
+  check('mở ghi chú theo tiêu đề', out.replies[0].embeds[0].data.title.includes('#2'), true);
+
+  out = await run('show', { note: '#99' });
+  check('số không có thì báo không tìm thấy', out.replies[0].content.includes('Không tìm thấy'), true);
+
+  out = await run('show', { note: '#1', public: true });
+  check('chọn public thì cả kênh thấy', out.deferred.flags, undefined);
+
+  out = await run('tags', {});
+  check('bảng tag đếm đúng', out.replies[0].embeds[0].data.description.includes('`#docker` — 1'), true);
+
+  const acTag = fakeNoteInteraction('list', { _focused: 'tag', _typed: 'doc' });
+  await note.autocomplete(acTag);
+  check('gợi ý tag lọc theo chữ đang gõ', acTag.captured.choices.map((c) => c.value), ['docker']);
+
+  const target = db.listNotes({ guildId: G, userId: NU, scope: 'mine' }).find((n) => n.no === 1);
+  out = await run('delete', { note: '#1' });
+  check('xoá phải bấm xác nhận', out.replies[0].components.length, 1);
+
+  const before = db.countNotes({ guildId: G, userId: NU, scope: 'mine' });
+  const btn = fakeNoteInteraction('delete', {});
+  btn.customId = `note:del:${target.id}`;
+  await note.handleButton(btn);
+  check('bấm xác nhận mới thật sự xoá', db.countNotes({ guildId: G, userId: NU, scope: 'mine' }), before - 1);
+
+  const cancel = fakeNoteInteraction('delete', {});
+  cancel.customId = 'note:cancel';
+  await note.handleButton(cancel);
+  check('bấm thôi thì không xoá gì', db.countNotes({ guildId: G, userId: NU, scope: 'mine' }), before - 1);
+
+  const ac = fakeNoteInteraction('show', { _focused: 'note', _typed: 'postgres' });
+  await note.autocomplete(ac);
+  check('gợi ý trả về mã dán được vào lệnh', /^id:\d+$/.test(ac.captured.choices[0].value), true);
+  check('gợi ý hiện tiêu đề', ac.captured.choices[0].name.includes('Postgres'), true);
+
+  const fromMenu = fakeNoteInteraction('add', {});
+  fromMenu.customId = 'notesave:111:222';
+  fromMenu.fields = {
+    getTextInputValue: (k) => ({ title: '', body: 'mẹo hay vừa trôi qua trong kênh', tags: 'vot-lai' })[k],
+  };
+  await noteSave.handleModal(fromMenu);
+  const vot = db.listNotes({ guildId: G, userId: NU, scope: 'mine' })[0];
+  check('lưu từ menu chuột phải giữ link tin nhắn gốc', vot.source_url, `https://discord.com/channels/${G}/111/222`);
+  check('lưu từ menu chuột phải tự đặt tiêu đề', vot.title, 'mẹo hay vừa trôi qua trong kênh');
+
+  // Ghi chú riêng của người khác không được lộ qua bất kỳ đường nào.
+  db.createNote({
+    guildId: G,
+    userId: 'nguoi-la',
+    title: 'Mật khẩu wifi',
+    body: 'khong-ai-duoc-thay',
+    tags: '',
+    shared: 0,
+    date: '2025-09-05',
+  });
+  out = await run('search', { query: 'khong-ai-duoc-thay', scope: 'server' });
+  check('ghi chú riêng của người khác không tìm ra', out.replies[0].content.includes('Không có ghi chú nào khớp'), true);
+
+  const sneaky = db.listNotes({ guildId: G, userId: 'nguoi-la', scope: 'mine' })[0];
+  out = await run('show', { note: `id:${sneaky.id}` });
+  check('gõ thẳng mã cũng không mở được ghi chú riêng của người khác', out.replies[0].content.includes('Không tìm thấy'), true);
 }
 
 if (failures) {

@@ -9,7 +9,7 @@ import { config } from '../config.js';
 import { getGuildConfig, getRankRoleId, setActive, touchUser, updateGuildConfig } from '../db.js';
 import { COLORS } from '../review.js';
 import { isAiEnabled } from '../ai.js';
-import { RANKS, ensureRankRoles, rankRoleProblems, xpForRank } from '../ranks.js';
+import { RANKS, ensureBotRole, ensureRankRoles, rankRoleProblems, xpForRank } from '../ranks.js';
 
 const DOW_NAMES = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
 
@@ -61,10 +61,29 @@ export const data = new SlashCommandBuilder()
   .addSubcommand((s) => s.setName('pause').setDescription('Tạm ngưng nhắc nhở cho riêng bạn'))
   .addSubcommand((s) => s.setName('resume').setDescription('Bật lại nhắc nhở cho riêng bạn'));
 
+/** Nói thẳng màu tên bot đã ăn chưa, và nếu chưa thì vướng ở đâu. */
+function botColorStatus({ role, wearer, error }) {
+  if (!role) return `❌ Chưa tạo được role cho bot${error ? `: ${error.slice(0, 400)}` : '.'}`;
+
+  const decider = wearer?.roles?.color ?? null;
+  if (decider?.id === role.id) {
+    return `<@&${role.id}> — tên bot trong danh sách thành viên giờ có màu, và đổi theo nhịp như các cấp bậc.`;
+  }
+  if (error) return `Đã tạo <@&${role.id}> nhưng chưa gán được cho bot: ${error.slice(0, 400)}`;
+  if (decider) {
+    return (
+      `Đã tạo <@&${role.id}>, nhưng **${decider.name}** nằm cao hơn và cũng có màu nên Discord lấy màu đó. ` +
+      'Vào Server Settings → Roles, kéo role của bot lên trên nó.'
+    );
+  }
+  return `Đã tạo <@&${role.id}> nhưng bot chưa đeo được — kiểm tra quyền **Manage Roles**.`;
+}
+
 async function rolesCommand(interaction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const { created, existing, error } = await ensureRankRoles(interaction.guild);
+  const bot = await ensureBotRole(interaction.guild);
   const problems = rankRoleProblems(interaction.guild);
 
   const lines = RANKS.map((r) => {
@@ -74,10 +93,12 @@ async function rolesCommand(interaction) {
   });
 
   const embed = new EmbedBuilder()
-    .setColor(problems.length || error ? COLORS.warn : COLORS.ok)
+    .setColor(problems.length || error || bot.error ? COLORS.warn : COLORS.ok)
     .setTitle('🎨 Role cấp bậc')
     .setDescription(lines.join('\n'))
     .setFooter({ text: 'Role chỉ đổi màu tên, không tách mục riêng trong danh sách thành viên.' });
+
+  embed.addFields({ name: '🤖 Màu tên của bot', value: botColorStatus(bot) });
 
   if (error) {
     embed.addFields({ name: '❌ Lỗi khi tạo role', value: error.slice(0, 900) });
@@ -85,7 +106,7 @@ async function rolesCommand(interaction) {
   if (problems.length) {
     embed.addFields({ name: '⚠️ Cần sửa thì bot mới gán được role', value: problems.join('\n').slice(0, 900) });
   }
-  if (!error && !problems.length) {
+  if (!error && !bot.error && !problems.length) {
     embed.addFields({
       name: '✅ Sẵn sàng',
       value: 'Từ báo cáo tiếp theo, ai đạt mốc sẽ được gán role và đổi màu tên ngay.',

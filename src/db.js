@@ -89,6 +89,24 @@ CREATE TABLE IF NOT EXISTS guild_config (
   remind_weekends INTEGER NOT NULL DEFAULT 0,
   updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS notes (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  guild_id   TEXT NOT NULL,
+  user_id    TEXT NOT NULL,
+  no         INTEGER NOT NULL,
+  title      TEXT NOT NULL DEFAULT '',
+  body       TEXT NOT NULL,
+  tags       TEXT NOT NULL DEFAULT '',
+  shared     INTEGER NOT NULL DEFAULT 0,
+  source_url TEXT,
+  note_date  TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (guild_id, user_id, no)
+);
+CREATE INDEX IF NOT EXISTS idx_notes_owner ON notes (guild_id, user_id, id DESC);
+CREATE INDEX IF NOT EXISTS idx_notes_shared ON notes (guild_id, shared, id DESC);
 `);
 
 if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'rank_key')) {
@@ -319,4 +337,72 @@ export function forgetDayThread(guildId, date) {
 
 export function listConfiguredGuilds() {
   return q('SELECT * FROM guild_config WHERE channel_id IS NOT NULL').all();
+}
+
+/* ---------------------------------------------------------------- ghi chú */
+
+/** Trần số ghi chú đọc lên để tìm kiếm. Tìm kiếm chạy trong JS (bỏ dấu tiếng Việt),
+ *  nên phải có trần — nhưng vài nghìn ghi chú thì một người viết cả chục năm mới tới. */
+const NOTE_SCAN_LIMIT = 2000;
+
+/** 'server' = mọi ghi chú đã chia sẻ trong server; mặc định = ghi chú riêng của bạn. */
+function noteScope(guildId, userId, scope, tag) {
+  const clauses = scope === 'server' ? ['guild_id=?', 'shared=1'] : ['guild_id=?', 'user_id=?'];
+  const params = scope === 'server' ? [guildId] : [guildId, userId];
+  if (tag) {
+    clauses.push('tags LIKE ?');
+    params.push(`%,${tag},%`);
+  }
+  return { where: clauses.join(' AND '), params };
+}
+
+export function createNote({ guildId, userId, title, body, tags, shared, sourceUrl, date }) {
+  const prev = q('SELECT MAX(no) AS m FROM notes WHERE guild_id=? AND user_id=?').get(guildId, userId);
+  const no = (prev?.m ?? 0) + 1;
+  const info = q(
+    `INSERT INTO notes (guild_id, user_id, no, title, body, tags, shared, source_url, note_date)
+     VALUES (?,?,?,?,?,?,?,?,?)`,
+  ).run(guildId, userId, no, title, body, tags ?? '', shared ? 1 : 0, sourceUrl ?? null, date);
+  return getNoteById(Number(info.lastInsertRowid));
+}
+
+export function updateNote(id, { title, body, tags, shared }) {
+  q(`UPDATE notes SET title=?, body=?, tags=?, shared=?, updated_at=datetime('now') WHERE id=?`)
+    .run(title, body, tags ?? '', shared ? 1 : 0, id);
+  return getNoteById(id);
+}
+
+export function getNoteById(id) {
+  return q('SELECT * FROM notes WHERE id=?').get(id) ?? null;
+}
+
+export function getNoteByNo(guildId, userId, no) {
+  return q('SELECT * FROM notes WHERE guild_id=? AND user_id=? AND no=?').get(guildId, userId, no) ?? null;
+}
+
+export function deleteNote(id) {
+  return q('DELETE FROM notes WHERE id=?').run(id).changes;
+}
+
+export function listNotes({ guildId, userId, scope, tag, limit = 10, offset = 0 }) {
+  const { where, params } = noteScope(guildId, userId, scope, tag);
+  return q(`SELECT * FROM notes WHERE ${where} ORDER BY id DESC LIMIT ? OFFSET ?`)
+    .all(...params, limit, offset);
+}
+
+export function countNotes({ guildId, userId, scope, tag }) {
+  const { where, params } = noteScope(guildId, userId, scope, tag);
+  return q(`SELECT COUNT(*) AS n FROM notes WHERE ${where}`).get(...params).n;
+}
+
+/** Nguyên liệu cho tìm kiếm: lọc thô bằng SQL, xếp hạng bằng `matchNotes` trong notes.js. */
+export function scanNotes({ guildId, userId, scope, tag }) {
+  const { where, params } = noteScope(guildId, userId, scope, tag);
+  return q(`SELECT * FROM notes WHERE ${where} ORDER BY id DESC LIMIT ?`)
+    .all(...params, NOTE_SCAN_LIMIT);
+}
+
+export function noteTagRows({ guildId, userId, scope }) {
+  const { where, params } = noteScope(guildId, userId, scope, null);
+  return q(`SELECT tags FROM notes WHERE ${where} AND tags <> ''`).all(...params);
 }

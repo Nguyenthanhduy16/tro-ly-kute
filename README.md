@@ -33,7 +33,9 @@ https://discord.com/api/oauth2/authorize?client_id=CLIENT_ID&permissions=3095060
 ```
 
 `permissions=309506099200` = Send Messages + Embed Links + Create Public Threads +
-Send Messages in Threads. Không xin gì thừa — không đọc tin nhắn, không xoá gì.
+Send Messages in Threads + Manage Roles. Không xin gì thừa — không đọc tin nhắn, không xoá gì.
+Manage Roles chỉ dùng cho role cấp bậc và role màu của chính bot; không bật thì hai thứ đó
+im lặng bỏ qua, phần còn lại vẫn chạy.
 
 ### 2. Lấy key cho phần AI review
 
@@ -152,6 +154,53 @@ Hai điều đánh đổi, cân nhắc trước khi để nhịp quá nhanh:
 Ở nhịp 45 giây, hiệu ứng đọc ra như màu đang thở chứ không phải lấp lánh. Muốn lấp lánh
 thật thì phải boost server để mở `ENHANCED_ROLE_COLORS`.
 
+Chính bot cũng được một role màu riêng — hồng → hồng nhạt → tím oải hương — tạo cùng lúc
+khi bạn chạy `/setup roles`, và chạy màu theo cùng nhịp đó. Role tích hợp mà Discord tự tạo
+cho bot vốn không có màu và Discord khoá không cho sửa, nên phải thêm một role riêng; tên bot
+vẫn đổi màu vì Discord lấy màu từ role **có màu** cao nhất chứ không phải role cao nhất.
+
+## Ghi chú
+
+Tin nhắn trong kênh trôi rất nhanh. `/note` là chỗ để những thứ đáng giữ nằm yên
+một nơi và tìm lại được bằng một dòng lệnh — không phải cuộn ngược ba tuần.
+
+```
+/note add                        mở ô soạn nhiều dòng rồi lưu
+/note list                       10 ghi chú gần nhất, mới trước
+/note search query:docker        tìm theo từ khoá
+/note show note:#12              đọc trọn một ghi chú
+/note edit note:#12              sửa lại
+/note delete note:#12            xoá (phải bấm xác nhận)
+/note tags                       các tag đang dùng và số ghi chú mỗi tag
+```
+
+Vớt nhanh một tin nhắn có sẵn: **chuột phải vào tin nhắn → Apps → Lưu vào ghi chú**.
+Nội dung được điền sẵn vào ô soạn để bạn thêm tiêu đề với tag, và ghi chú giữ luôn
+link về bài gốc. Discord gửi kèm nội dung của đúng tin nhắn bạn tự chọn, nên vẫn
+không phải bật thêm intent nào.
+
+**Mặc định ghi chú là của riêng bạn.** Bot trả lời bằng tin nhắn chỉ mình bạn thấy,
+người khác trong server không đọc được, không tìm ra. Muốn chia sẻ thì thêm
+`share:True` — ghi chú được đăng thêm một bản ra kênh chính và ai cũng đọc lại được
+bằng `/note list scope:server`. Thêm `public:True` vào `list` / `search` / `show`
+khi bạn muốn chỉ cho người khác xem ngay tại chỗ.
+
+Tìm kiếm **không cần gõ dấu và không phân biệt hoa thường**: `hoc rust` ra `Học Rust`,
+`DOCKER` ra `docker`. Phải khớp mọi từ khoá bạn gõ, khớp ở tiêu đề được xếp trên khớp
+ở tag, khớp ở tag trên khớp trong nội dung.
+
+Tag được chuẩn hoá về chữ thường không dấu để `#Học tập` và `hoc-tap` không thành hai
+nhánh riêng. Mỗi ghi chú tối đa 5 tag. Gõ `tag:` trong `/note list` hay `/note search`
+thì bot gợi ý sẵn các tag bạn đang dùng, kèm số ghi chú của từng tag.
+
+Số ghi chú (`#1`, `#2`…) đánh riêng cho từng người, nên `#3` của bạn không đụng `#3`
+của người khác. Ghi chú người khác chia sẻ sẽ hiện mã dạng `id:42` — dán nguyên mã đó
+vào `/note show note:` là ra. Không nhớ số thì gõ luôn một mẩu tiêu đề, hoặc chọn từ
+danh sách bot gợi ý khi bạn đang gõ.
+
+Ghi chú **không cộng XP và không ảnh hưởng streak**. Ghi chép là việc nên làm vì nó
+có ích, không phải để cày điểm.
+
 ## Các lệnh
 
 | Lệnh | Việc nó làm |
@@ -165,7 +214,12 @@ thật thì phải boost server để mở `ENHANCED_ROLE_COLORS`.
 | `/streak` | Streak, XP, level, dải 14 ngày gần nhất |
 | `/leaderboard` | BXH XP theo tuần / 30 ngày / toàn thời gian |
 | `/history` | Đọc lại các báo cáo cũ |
-| `/setup roles` | Tạo role cấp bậc đổi màu tên |
+| `/note add` | Lưu một ghi chú (bỏ trống nội dung để mở ô soạn nhiều dòng) |
+| `/note list` \| `/note search` | Xem lại và tìm ghi chú (tìm không cần gõ dấu) |
+| `/note show` \| `/note edit` \| `/note delete` | Đọc trọn, sửa, xoá một ghi chú |
+| `/note tags` | Các tag đang dùng và số ghi chú mỗi tag |
+| chuột phải tin nhắn → **Lưu vào ghi chú** | Vớt một tin nhắn trong kênh vào ghi chú |
+| `/setup roles` | Tạo role cấp bậc đổi màu tên + role màu cho chính bot |
 | `/setup pause` \| `/setup resume` | Tự tắt/bật nhắc nhở cho riêng mình |
 
 Nộp lại `/daily` cho ngày đã có báo cáo = **sửa** báo cáo đó, không cộng XP lần hai.
@@ -228,9 +282,11 @@ src/
   shimmer.js        vòng lặp đổi màu role theo nhịp
   ai.js             prompt HR + lớp provider (OpenRouter / Gemini)
   review.js         gom dữ liệu tuần, dựng embed đánh giá
+  notes.js          bỏ dấu, chuẩn hoá tag, xếp hạng tìm kiếm, dựng embed ghi chú
   scheduler.js      một cron mỗi giờ, đọc cấu hình từng server
   commands/         mỗi lệnh một file
-scripts/selftest.js  89 kiểm tra logic, chạy `npm test`, không cần Discord
+  commands/note-save.js  menu chuột phải "Lưu vào ghi chú"
+scripts/selftest.js  145 kiểm tra logic, chạy `npm test`, không cần Discord
 scripts/check-ai.js  chẩn đoán key + model, chạy `npm run check-ai`
 scripts/send-reminder.js  bắn lời nhắc thủ công, chạy `npm run remind`
 data/bot.db          dữ liệu (đã gitignore)

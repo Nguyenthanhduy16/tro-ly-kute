@@ -108,6 +108,9 @@ export async function handleModal(interaction) {
   const userId = interaction.user.id;
   const displayName = interaction.member?.displayName ?? interaction.user.username;
 
+  // syncRank có thể phải tạo và gán role — gọi REST, dễ vượt 3 giây Discord cho phép.
+  await interaction.deferReply();
+
   touchUser(guildId, userId, displayName);
   const existing = getPlan(guildId, userId, weekStart);
   const award = existing?.xp_awarded ? 0 : XP.WEEKLY_PLAN;
@@ -130,7 +133,7 @@ export async function handleModal(interaction) {
         : 'Cuối tuần trợ lý sẽ đối chiếu cam kết này với thực tế',
     });
 
-  return interaction.reply({ embeds: [embed] });
+  return interaction.editReply({ embeds: [embed] });
 }
 
 /* -------------------------------------------------------------- /weekly show */

@@ -1,6 +1,6 @@
 import { Client, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
 import { assertRuntimeConfig, config } from './config.js';
-import { commandsByName, modalHandlers } from './commands/index.js';
+import { buttonHandlers, commandsByName, modalHandlers } from './commands/index.js';
 import { startScheduler } from './scheduler.js';
 import { startShimmer } from './shimmer.js';
 import { getGuildConfig } from './db.js';
@@ -25,6 +25,8 @@ client.on(Events.GuildCreate, (guild) => {
 });
 
 async function safeReply(interaction, content) {
+  // Autocomplete không trả lời được — im lặng còn hơn ném thêm một lỗi nữa.
+  if (!interaction.isRepliable()) return;
   const payload = { content, flags: MessageFlags.Ephemeral };
   try {
     if (interaction.deferred || interaction.replied) await interaction.followUp(payload);
@@ -46,10 +48,23 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 
   try {
-    if (interaction.isChatInputCommand()) {
+    if (interaction.isChatInputCommand() || interaction.isContextMenuCommand()) {
       const command = commandsByName.get(interaction.commandName);
       if (!command) return;
       await command.execute(interaction);
+      return;
+    }
+
+    if (interaction.isAutocomplete()) {
+      const command = commandsByName.get(interaction.commandName);
+      await command?.autocomplete?.(interaction);
+      return;
+    }
+
+    if (interaction.isButton()) {
+      const handler = buttonHandlers.get(interaction.customId.split(':')[0]);
+      if (!handler) return;
+      await handler.handleButton(interaction);
       return;
     }
 

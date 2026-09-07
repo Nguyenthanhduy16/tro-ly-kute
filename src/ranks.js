@@ -17,6 +17,14 @@ export const RANKS = [
 
 export const RANK_BY_KEY = new Map(RANKS.map((r) => [r.key, r]));
 
+/**
+ * Role riêng cho chính bot, chỉ để tên nó trong danh sách thành viên có màu.
+ * Discord lấy màu tên từ role CÓ MÀU cao nhất, mà role tích hợp Discord tự tạo
+ * cho bot lại không màu — nên chỉ cần thêm một role màu là đủ, không phải đụng
+ * vào role tích hợp (Discord khoá, sửa không được).
+ */
+export const BOT_ROLE = { key: 'bot', name: '🤖 Trợ lý', color: 0xff9ecd };
+
 /** XP cần để chạm một cấp — ngược từ công thức level. */
 export function xpForRank(rank) {
   return 40 * (rank.level - 1) ** 2;
@@ -77,6 +85,47 @@ export async function ensureRankRoles(guild) {
   }
 
   return { created, existing, error: null };
+}
+
+/**
+ * Tạo role màu cho chính bot rồi tự đeo vào.
+ * Trả { role, wearer, error } — `wearer.roles.color` cho biết role nào đang
+ * thật sự quyết định màu tên, vì một role có màu nằm cao hơn sẽ đè lên.
+ */
+export async function ensureBotRole(guild) {
+  const me = guild.members.me;
+  if (!me) return { role: null, wearer: null, error: 'Không đọc được thông tin của bot trong server.' };
+
+  const knownId = getRankRoleId(guild.id, BOT_ROLE.key);
+  let role =
+    (knownId && guild.roles.cache.get(knownId)) ||
+    guild.roles.cache.find((r) => r.name === BOT_ROLE.name) ||
+    null;
+
+  if (!role) {
+    try {
+      role = await guild.roles.create({
+        name: BOT_ROLE.name,
+        color: BOT_ROLE.color,
+        hoist: false,
+        mentionable: false,
+        reason: 'Màu tên cho chính bot',
+      });
+    } catch (err) {
+      return { role: null, wearer: me, error: err.message };
+    }
+  }
+  saveRankRoleId(guild.id, BOT_ROLE.key, role.id);
+
+  if (me.roles.cache.has(role.id)) return { role, wearer: me, error: null };
+
+  try {
+    // roles.add trả về member đã cập nhật — đọc luôn từ đó, khỏi đợi gateway.
+    const wearer = await me.roles.add(role.id, 'Màu tên cho chính bot');
+    return { role, wearer, error: null };
+  } catch (err) {
+    return { role, wearer: me, error: err.message };
+  }
 }
 
 /**

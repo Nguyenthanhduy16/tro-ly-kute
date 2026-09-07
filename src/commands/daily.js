@@ -135,6 +135,11 @@ async function submit(interaction, { date, done, nextPlan, blocker }) {
     });
   }
 
+  // Từ đây trở đi là tạo thread, gán role, đăng bài — toàn gọi REST và dư sức
+  // vượt 3 giây Discord cho phép trả lời. Giữ chỗ trước, sửa lại nội dung sau,
+  // nếu không sẽ ăn 10062 Unknown interaction đúng vào hôm đầu tiên của ngày.
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   const { guildId } = interaction;
   const userId = interaction.user.id;
   const displayName = interaction.member?.displayName ?? interaction.user.username;
@@ -229,38 +234,36 @@ async function publish(interaction, { embed, date, isEdit, xp, streak, promotion
   const guildCfg = getGuildConfig(interaction.guildId);
   const { target } = await dayDestination(interaction.client, guildCfg, date);
 
-  // Chưa cấu hình kênh, hoặc đang gõ ngay trong chính thread đó -> trả lời tại chỗ.
-  if (!target || target.id === interaction.channelId) {
-    return interaction.reply({ embeds: [embed] });
-  }
+  // Chưa cấu hình kênh -> đăng ngay tại chỗ vừa gõ lệnh, đừng để báo cáo rơi vào hư không.
+  const channel = target ?? interaction.channel;
+  if (!channel) return interaction.editReply({ embeds: [embed] });
 
   const known = getDaily(interaction.guildId, interaction.user.id, date)?.message_id;
   let posted = null;
 
   if (isEdit && known) {
-    posted = await target.messages.fetch(known).then((m) => m.edit({ embeds: [embed] })).catch(() => null);
+    posted = await channel.messages.fetch(known).then((m) => m.edit({ embeds: [embed] })).catch(() => null);
   }
   if (!posted) {
-    posted = await target.send({ embeds: [embed] }).catch(() => null);
+    posted = await channel.send({ embeds: [embed] }).catch(() => null);
   }
   if (!posted) {
     // Không đăng được (thiếu quyền chẳng hạn) -> ít nhất người gõ vẫn thấy kết quả.
-    return interaction.reply({ embeds: [embed] });
+    return interaction.editReply({ embeds: [embed] });
   }
 
   setDailyMessageId(interaction.guildId, interaction.user.id, date, posted.id);
 
   if (promotion?.promoted) {
-    await target
+    await channel
       .send({ embeds: [promotionEmbed({ displayName, rank: promotion.rank, totalXp })] })
       .catch(() => null);
   }
 
-  return interaction.reply({
+  return interaction.editReply({
     content:
       `${isEdit ? '✏️ Đã cập nhật' : '✅ Đã ghi nhận'} báo cáo ${prettyDate(date)} · ` +
       `**+${xp} XP** · streak **${streak}**\n→ ${posted.url}`,
-    flags: MessageFlags.Ephemeral,
   });
 }
 

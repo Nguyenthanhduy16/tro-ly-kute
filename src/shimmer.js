@@ -1,6 +1,6 @@
 import { config } from './config.js';
 import { getRankRoleId, heldRankKeys, listConfiguredGuilds } from './db.js';
-import { RANK_BY_KEY } from './ranks.js';
+import { BOT_ROLE } from './ranks.js';
 
 /**
  * Discord không cho role đổi màu gradient hay lấp lánh nếu server chưa boost
@@ -16,6 +16,8 @@ export const SHIMMER_PALETTES = {
   kyluat: [0x9b59b6, 0x6e3a85, 0xc07fdb],
   thep: [0xf1c40f, 0xc29d0b, 0xffde4d],
   huyenthoai: [0xe74c3c, 0xb03026, 0xff7a6b],
+  // Bảng của chính bot: hồng → hồng nhạt → tím oải hương.
+  bot: [0xff9ecd, 0xffc4e1, 0xc792ea],
 };
 
 let step = 0;
@@ -35,14 +37,15 @@ export async function shimmerTick(client, at = step) {
   let changed = 0;
 
   for (const guildCfg of listConfiguredGuilds()) {
-    const held = heldRankKeys(guildCfg.guild_id);
-    if (!held.length) continue;
+    // Cấp đang có người đeo, cộng thêm role riêng của bot nếu đã tạo.
+    const keys = heldRankKeys(guildCfg.guild_id);
+    if (getRankRoleId(guildCfg.guild_id, BOT_ROLE.key)) keys.push(BOT_ROLE.key);
+    if (!keys.length) continue;
 
     const guild = await client.guilds.fetch(guildCfg.guild_id).catch(() => null);
     if (!guild) continue;
 
-    for (const rankKey of held) {
-      if (!RANK_BY_KEY.has(rankKey)) continue;
+    for (const rankKey of keys) {
       const color = shimmerColor(rankKey, at);
       const roleId = getRankRoleId(guildCfg.guild_id, rankKey);
       if (!color || !roleId) continue;
@@ -63,7 +66,11 @@ export async function shimmerTick(client, at = step) {
 export function startShimmer(client) {
   const seconds = config.shimmerSeconds;
   if (!seconds) {
-    console.log('[shimmer] tắt (SHIMMER_SECONDS=0)');
+    // Tắt giữa chừng thì role đang đứng ở màu ngẫu nhiên của nhịp cuối. Chạy đúng
+    // một lần ở nhịp 0 để mọi role về màu gốc của nó rồi mới thôi hẳn.
+    shimmerTick(client, 0)
+      .then((n) => console.log(`[shimmer] tắt (SHIMMER_SECONDS=0) · đã trả ${n} role về màu gốc`))
+      .catch((err) => console.error('[shimmer] không trả được màu gốc:', err));
     return null;
   }
 
