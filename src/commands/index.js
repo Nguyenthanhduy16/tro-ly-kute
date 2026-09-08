@@ -5,9 +5,10 @@ import * as leaderboard from './leaderboard.js';
 import * as history from './history.js';
 import * as note from './note.js';
 import * as noteSave from './note-save.js';
+import * as remind from './remind.js';
 import * as setup from './setup.js';
 
-export const commandModules = [daily, weekly, streak, leaderboard, history, note, noteSave, setup];
+export const commandModules = [daily, weekly, streak, leaderboard, history, note, noteSave, remind, setup];
 
 export const commandsByName = new Map(commandModules.map((m) => [m.data.name, m]));
 

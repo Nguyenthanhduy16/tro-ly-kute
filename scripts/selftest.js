@@ -720,6 +720,118 @@ db.updateGuildConfig(G, { channel_id: 'chan-1' });
   );
 }
 
+/* ------------------------------------------------------- loi hen co han */
+const rem = await import('../src/reminders.js');
+
+{
+  const T = '2025-09-10'; // thu Tu
+
+  check('hom nay', rem.parseWhen('hôm nay', T), T);
+  check('mai', rem.parseWhen('mai', T), '2025-09-11');
+  check('ngay mai viet day du', rem.parseWhen('Ngày Mai', T), '2025-09-11');
+  check('ngay kia', rem.parseWhen('ngay kia', T), '2025-09-12');
+  check('+5', rem.parseWhen('+5', T), '2025-09-15');
+  check('3 ngay nua', rem.parseWhen('3 ngày nữa', T), '2025-09-13');
+  check('so tran khong phai so ngay', rem.parseWhen('15', T), null);
+
+  check('thu 6 ke tiep', rem.parseWhen('t6', T), '2025-09-12');
+  check('thu 6 viet chu', rem.parseWhen('thứ 6', T), '2025-09-12');
+  check('chu nhat', rem.parseWhen('chủ nhật', T), '2025-09-14');
+  check('dung thu hom nay -> tuan sau', rem.parseWhen('t4', T), '2025-09-17');
+
+  check('dd/mm sap toi', rem.parseWhen('15/9', T), '2025-09-15');
+  check('dd/mm da qua -> nam sau', rem.parseWhen('2/1', T), '2026-01-02');
+  check('dd/mm/yyyy', rem.parseWhen('15/09/2026', T), '2026-09-15');
+  check('dd-mm-yy', rem.parseWhen('15-9-26', T), '2026-09-15');
+  check('iso', rem.parseWhen('2026-09-15', T), '2026-09-15');
+  check('ngay khong co that', rem.parseWhen('31/2', T), null);
+  check('go bay ba', rem.parseWhen('thu nam tuan sau nua', T), null);
+  check('de trong', rem.parseWhen('', T), null);
+
+  check('con bao nhieu ngay', rem.relativeLabel('2025-09-13', T), 'còn 3 ngày');
+  check('hom nay la hom nay', rem.relativeLabel(T, T), 'hôm nay');
+  check('qua han', rem.relativeLabel('2025-09-08', T), 'quá hạn 2 ngày');
+  check('nhan ngay co nam va thu', rem.dueLabel('2025-09-15', 14), '15/09/2025 (T2) 14:00');
+  check('khong dat gio thi khong hien gio', rem.dueLabel('2025-09-15', null), '15/09/2025 (T2)');
+}
+
+// Bao truoc 1 ngay luc 21h, roi bao lai dung hom toi han.
+{
+  const r = { id: 1, no: 1, user_id: U, what: 'Nộp hồ sơ', due_date: '2025-09-15', due_hour: null, lead_days: 1, notified_lead: 0, notified_due: 0 };
+  const fire = (now) => rem.dueNotifications([r], 21, now).map((n) => n.kind);
+
+  check('chua toi moc thi im', fire('2025-09-14 20'), []);
+  check('21h hom truoc -> bao truoc', fire('2025-09-14 21'), ['lead']);
+  check('sang hom sau van con bao truoc neu bot vua bat', fire('2025-09-15 09'), ['lead']);
+  check('toi han -> bao lan hai', fire('2025-09-15 21'), ['due']);
+
+  r.notified_lead = 1;
+  check('bao truoc roi thi khong bao lai', fire('2025-09-14 22'), []);
+  r.notified_due = 1;
+  check('bao du hai lan thi thoi han', fire('2025-09-16 21'), []);
+}
+
+// Dat gio cu the thi moc toi han theo gio do, khong theo gio nhac chung.
+{
+  const r = { id: 2, no: 2, user_id: U, what: 'Phỏng vấn', due_date: '2025-09-15', due_hour: 9, lead_days: 1, notified_lead: 0, notified_due: 0 };
+  const fire = (now) => rem.dueNotifications([r], 21, now).map((n) => n.kind);
+
+  check('9h sang -> dung gio hen', fire('2025-09-15 09'), ['due']);
+  check('8h sang van la bao truoc', fire('2025-09-15 08'), ['lead']);
+  check('toi han thi khong bao truoc nua', rem.dueNotifications([r], 21, '2025-09-15 10').length, 1);
+}
+
+// lead 0: chi bao dung hom do, khong bao truoc.
+{
+  const r = { id: 3, no: 3, user_id: U, what: 'Sinh nhật', due_date: '2025-09-15', due_hour: null, lead_days: 0, notified_lead: 0, notified_due: 0 };
+  check('lead 0 khong bao truoc', rem.dueNotifications([r], 21, '2025-09-14 21').map((n) => n.kind), []);
+  check('lead 0 van bao dung hom do', rem.dueNotifications([r], 21, '2025-09-15 21').map((n) => n.kind), ['due']);
+}
+
+// Scheduler: bat thanh cong thi danh dau, gui hong thi de lai gio sau thu lai.
+{
+  const RU = 'user-loi-hen';
+  db.touchUser(G, RU, 'Người hẹn');
+  const made = db.createReminder({
+    guildId: G, userId: RU, what: 'Đóng tiền nhà', dueDate: '2025-09-15',
+    dueHour: null, leadDays: 1, notifiedLead: 0,
+  });
+
+  const { client, sent } = fakeDiscord();
+  const cfg = db.getGuildConfig(G);
+  check('chua toi moc thi khong gui gi', await _internals.sendDueReminders(client, cfg, { today: '2025-09-14', hour: 20 }), 0);
+  check('toi moc thi gui 1 tin', await _internals.sendDueReminders(client, cfg, { today: '2025-09-14', hour: 21 }), 1);
+  check('nhac o KENH chinh', sent[0].where, 'channel');
+  check('ping dung nguoi hen', sent[0].embeds[0].data.description.includes(`<@${RU}>`), true);
+  check('noi ro con bao lau', sent[0].embeds[0].data.title.includes('ngày mai'), true);
+  check('da bao roi thi khong bao lai', await _internals.sendDueReminders(client, cfg, { today: '2025-09-14', hour: 22 }), 0);
+
+  check('dung hom toi han bao lan hai', await _internals.sendDueReminders(client, cfg, { today: '2025-09-15', hour: 21 }), 1);
+  check('bao xong hai lan thi im han', await _internals.sendDueReminders(client, cfg, { today: '2025-09-16', hour: 21 }), 0);
+
+  // Danh dau xong -> khong con la ung vien nua.
+  const again = db.createReminder({
+    guildId: G, userId: RU, what: 'Việc sẽ huỷ', dueDate: '2025-09-20',
+    dueHour: null, leadDays: 1, notifiedLead: 0,
+  });
+  check('so loi hen dem rieng tung nguoi', [made.no, again.no], [1, 2]);
+  db.setReminderDone(again.id, true);
+  check('viec da xong thi khong nhac', await _internals.sendDueReminders(client, cfg, { today: '2025-09-19', hour: 21 }), 0);
+
+  // Bot tat may may hom roi bat lai: han vua qua van duoc bao bu.
+  db.setReminderDone(again.id, false);
+  check('bat lai sau khi lo han -> van bao bu', await _internals.sendDueReminders(client, cfg, { today: '2025-09-22', hour: 10 }), 1);
+
+  // Nhung han cua doi nao roi thi thoi.
+  const oldOne = db.createReminder({
+    guildId: G, userId: RU, what: 'Hạn từ đời nào', dueDate: '2025-01-05',
+    dueHour: null, leadDays: 1, notifiedLead: 0,
+  });
+  check('han qua lau thi khong dao lai', await _internals.sendDueReminders(client, cfg, { today: '2025-09-22', hour: 11 }), 0);
+  db.deleteReminder(oldOne.id);
+  check('xoa roi thi bien mat', db.getReminderById(oldOne.id), null);
+}
+
 if (failures) {
   console.error(`❌ ${failures} kiểm tra thất bại`);
   process.exit(1);

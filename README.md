@@ -208,6 +208,50 @@ danh sách bot gợi ý khi bạn đang gõ.
 Ghi chú **không cộng XP và không ảnh hưởng streak**. Ghi chép là việc nên làm vì nó
 có ích, không phải để cày điểm.
 
+## Việc có hạn
+
+`/note` là chỗ cất thứ đã xong; `/remind` là chỗ cất thứ chưa tới.
+
+```
+/remind add what:Nộp hồ sơ visa when:mai
+/remind add what:Phỏng vấn when:t5 hour:9
+/remind add what:Đóng tiền nhà when:15/9 lead:3
+/remind list                     việc đang treo, gần tới hạn nhất trước
+/remind done task:#2             xong rồi, bot thôi nhắc
+/remind delete task:#2           xoá hẳn
+```
+
+Ô `when` nhận nhiều kiểu, và **gợi ý ngay lúc gõ**: gõ `15/9` là thấy luôn
+`15/09/2026 (T3) — còn 6 ngày`, sai thì biết trước khi bấm Enter.
+
+| Gõ | Ra |
+|---|---|
+| `mai` · `ngày kia` | ngày mai / ngày kia |
+| `+3` · `3 ngày nữa` | 3 ngày sau |
+| `t5` · `thứ 5` · `chủ nhật` | lần kế tiếp, luôn là ngày **sau** hôm nay |
+| `15/9` | 15 tháng 9 năm nay — đã qua thì hiểu là năm sau |
+| `15/09/2026` · `15-9-26` · `2026-09-15` | đúng ngày đó |
+
+### Bot nhắc mấy lần
+
+Mỗi việc được nhắc **tối đa hai lần**, ping đích danh bạn ở kênh đã cấu hình:
+
+1. **Báo trước** — `lead` ngày trước hạn, vào đúng giờ nhắc daily (`remind_hour`, mặc định 21:00).
+   Mặc định `lead:1` nên là tối hôm trước. Đặt `lead:0` thì bỏ hẳn lần này.
+2. **Tới hạn** — đúng hôm đó, vào giờ bạn đặt ở `hour`. Không đặt `hour` thì cũng vào `remind_hour`.
+
+Nhắc rồi thì thôi, không nhai lại. Đánh dấu `/remind done` giữa chừng là im ngay.
+Bấm `done` lần nữa vào việc đã xong thì mở lại.
+
+Lịch chạy theo **giờ tròn** vì cron của bot đập mỗi giờ một nhịp — hẹn `hour:14`
+thì nổ lúc 14:00. Không có mốc phút, và cũng không hứa hẹn gì về phút.
+
+Bot tắt máy đúng lúc tới hạn thì **bật lại vẫn nhắc bù**, miễn là chưa quá hạn
+7 ngày. Quá cửa sổ đó coi như bỏ — đào lại hạn của mùa trước chỉ tổ ồn.
+
+Lời hẹn là **của riêng bạn**: chỉ bạn thấy trong `/remind list`, và chỉ bạn bị
+gọi tên khi tới hạn. Không cộng XP, không đụng streak.
+
 ## Các lệnh
 
 | Lệnh | Việc nó làm |
@@ -225,6 +269,9 @@ có ích, không phải để cày điểm.
 | `/note list` \| `/note search` | Xem lại và tìm ghi chú (tìm không cần gõ dấu) |
 | `/note show` \| `/note edit` \| `/note delete` | Đọc trọn, sửa, xoá một ghi chú |
 | `/note tags` | Các tag đang dùng và số ghi chú mỗi tag |
+| `/remind add` | Hẹn một việc có hạn, bot nhắc khi sắp tới |
+| `/remind list` | Việc đang treo, gần tới hạn nhất trước |
+| `/remind done` \| `/remind delete` | Đánh dấu xong / xoá hẳn một lời hẹn |
 | chuột phải tin nhắn → **Lưu vào ghi chú** | Vớt một tin nhắn trong kênh vào ghi chú |
 | `/setup roles` | Tạo role cấp bậc đổi màu tên + role màu cho chính bot |
 | `/setup pause` \| `/setup resume` | Tự tắt/bật nhắc nhở cho riêng mình |
@@ -290,10 +337,11 @@ src/
   ai.js             prompt HR + lớp provider (OpenRouter / Gemini)
   review.js         gom dữ liệu tuần, dựng embed đánh giá
   notes.js          bỏ dấu, chuẩn hoá tag, xếp hạng tìm kiếm, dựng embed ghi chú
+  reminders.js      đọc hạn người gõ, tính hai mốc nhắc, dựng embed lời hẹn
   scheduler.js      một cron mỗi giờ, đọc cấu hình từng server
   commands/         mỗi lệnh một file
   commands/note-save.js  menu chuột phải "Lưu vào ghi chú"
-scripts/selftest.js  163 kiểm tra logic, chạy `npm test`, không cần Discord
+scripts/selftest.js  211 kiểm tra logic, chạy `npm test`, không cần Discord
 scripts/check-ai.js  chẩn đoán key + model, chạy `npm run check-ai`
 scripts/send-reminder.js  bắn lời nhắc thủ công, chạy `npm run remind`
 data/bot.db          dữ liệu (đã gitignore)

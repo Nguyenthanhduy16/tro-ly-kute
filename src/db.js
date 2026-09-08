@@ -107,6 +107,24 @@ CREATE TABLE IF NOT EXISTS notes (
 );
 CREATE INDEX IF NOT EXISTS idx_notes_owner ON notes (guild_id, user_id, id DESC);
 CREATE INDEX IF NOT EXISTS idx_notes_shared ON notes (guild_id, shared, id DESC);
+
+CREATE TABLE IF NOT EXISTS reminders (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  guild_id      TEXT NOT NULL,
+  user_id       TEXT NOT NULL,
+  no            INTEGER NOT NULL,
+  what          TEXT NOT NULL,
+  due_date      TEXT NOT NULL,
+  due_hour      INTEGER,
+  lead_days     INTEGER NOT NULL DEFAULT 1,
+  notified_lead INTEGER NOT NULL DEFAULT 0,
+  notified_due  INTEGER NOT NULL DEFAULT 0,
+  done          INTEGER NOT NULL DEFAULT 0,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (guild_id, user_id, no)
+);
+CREATE INDEX IF NOT EXISTS idx_reminders_pending
+  ON reminders (guild_id, done, due_date);
 `);
 
 if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'rank_key')) {
@@ -405,4 +423,59 @@ export function scanNotes({ guildId, userId, scope, tag }) {
 export function noteTagRows({ guildId, userId, scope }) {
   const { where, params } = noteScope(guildId, userId, scope, null);
   return q(`SELECT tags FROM notes WHERE ${where} AND tags <> ''`).all(...params);
+}
+
+/* --------------------------------------------------------------- lời hẹn */
+
+export function createReminder({ guildId, userId, what, dueDate, dueHour, leadDays, notifiedLead }) {
+  const prev = q('SELECT MAX(no) AS m FROM reminders WHERE guild_id=? AND user_id=?').get(guildId, userId);
+  const no = (prev?.m ?? 0) + 1;
+  const info = q(
+    `INSERT INTO reminders (guild_id, user_id, no, what, due_date, due_hour, lead_days, notified_lead)
+     VALUES (?,?,?,?,?,?,?,?)`,
+  ).run(guildId, userId, no, what, dueDate, dueHour ?? null, leadDays, notifiedLead ? 1 : 0);
+  return getReminderById(Number(info.lastInsertRowid));
+}
+
+export function getReminderById(id) {
+  return q('SELECT * FROM reminders WHERE id=?').get(id) ?? null;
+}
+
+export function getReminderByNo(guildId, userId, no) {
+  return q('SELECT * FROM reminders WHERE guild_id=? AND user_id=? AND no=?').get(guildId, userId, no) ?? null;
+}
+
+export function markReminderNotified(id, kind) {
+  const column = kind === 'due' ? 'notified_due' : 'notified_lead';
+  q(`UPDATE reminders SET ${column}=1 WHERE id=?`).run(id);
+}
+
+export function setReminderDone(id, done) {
+  q('UPDATE reminders SET done=? WHERE id=?').run(done ? 1 : 0, id);
+  return getReminderById(id);
+}
+
+export function deleteReminder(id) {
+  return q('DELETE FROM reminders WHERE id=?').run(id).changes;
+}
+
+/** Lời hẹn của một người: mặc định chỉ những cái chưa xong, gần tới hạn nhất trước. */
+export function listReminders({ guildId, userId, includeDone = false, limit = 25 }) {
+  const where = includeDone ? '' : ' AND done=0';
+  return q(
+    `SELECT * FROM reminders WHERE guild_id=? AND user_id=?${where}
+     ORDER BY done ASC, due_date ASC, COALESCE(due_hour, 99) ASC LIMIT ?`,
+  ).all(guildId, userId, limit);
+}
+
+/**
+ * Ứng viên cho scheduler: chưa xong và còn ít nhất một mốc chưa bắn.
+ * Lọc ngày ngay trong SQL để một server chạy lâu năm không phải quét cả kho lịch cũ.
+ */
+export function pendingReminders(guildId, fromDate) {
+  return q(
+    `SELECT * FROM reminders
+     WHERE guild_id=? AND done=0 AND (notified_lead=0 OR notified_due=0) AND due_date >= ?
+     ORDER BY due_date ASC`,
+  ).all(guildId, fromDate);
 }

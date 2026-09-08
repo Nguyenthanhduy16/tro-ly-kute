@@ -3,6 +3,7 @@ import { EmbedBuilder } from 'discord.js';
 import { config } from './config.js';
 import {
   addDays,
+  calendarDate,
   hourOfDay,
   isRequiredDay,
   logicalDate,
@@ -14,6 +15,8 @@ import {
   listActiveUsers,
   listConfiguredGuilds,
   listDailyDates,
+  markReminderNotified,
+  pendingReminders,
   userIdsReportedOn,
   usersWithPlan,
   usersWithDailiesBetween,
@@ -22,6 +25,7 @@ import { XP, computeStreak, streakBadge } from './xp.js';
 import { COLORS, runWeeklyReview } from './review.js';
 import { isAiEnabled } from './ai.js';
 import { dayDestination } from './threads.js';
+import { dueNotifications, momentKey, notificationEmbed } from './reminders.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -191,6 +195,43 @@ async function sendWeeklyPlanReminder(client, guildCfg, today = logicalDate()) {
   });
 }
 
+/**
+ * Lời hẹn quá hạn bao nhiêu ngày thì vẫn còn được lôi ra bắn.
+ * Bot tắt máy mấy hôm rồi bật lại vẫn phải nhắc, nhưng đào lại hạn của năm ngoái
+ * thì chỉ tổ ồn — quá cửa sổ này coi như bỏ.
+ */
+const REMINDER_CATCHUP_DAYS = 7;
+
+/**
+ * Chạy mỗi giờ, không phụ thuộc giờ nhắc daily: hạn có thể rơi vào bất kỳ giờ nào.
+ * Chỉ đánh dấu đã bắn khi gửi thành công, nên mất mạng hay thiếu quyền thì giờ sau thử lại.
+ */
+async function sendDueReminders(client, guildCfg, { today = calendarDate(), hour = hourOfDay() } = {}) {
+  const rows = pendingReminders(guildCfg.guild_id, addDays(today, -REMINDER_CATCHUP_DAYS));
+  if (!rows.length) return 0;
+
+  const due = dueNotifications(rows, guildCfg.remind_hour, momentKey(today, hour));
+  if (!due.length) return 0;
+
+  const channel = await fetchChannel(client, guildCfg.channel_id);
+  if (!channel) return 0;
+
+  let sent = 0;
+  for (const { reminder, kind } of due) {
+    const ok = await channel
+      .send({ embeds: [notificationEmbed({ reminder, kind, today })] })
+      .then(() => true)
+      .catch((err) => {
+        console.error(`[remind] không gửi được lời hẹn #${reminder.no}:`, err.message);
+        return false;
+      });
+    if (!ok) continue;
+    markReminderNotified(reminder.id, kind);
+    sent += 1;
+  }
+  return sent;
+}
+
 /** Một cron mỗi giờ, đọc cấu hình từng guild — đổi giờ nhắc không cần khởi động lại bot. */
 export function startScheduler(client) {
   const task = cron.schedule(
@@ -198,9 +239,14 @@ export function startScheduler(client) {
     async () => {
       const hour = hourOfDay();
       const today = logicalDate();
+      // Lời hẹn đi theo ngày trên lịch, không theo "ngày làm việc" có rollover 4h sáng:
+      // hẹn 15/09 thì phải nổ đúng ngày 15, kể cả lúc 1h sáng.
+      const calToday = calendarDate();
 
       for (const guildCfg of listConfiguredGuilds()) {
         try {
+          await sendDueReminders(client, guildCfg, { today: calToday, hour });
+
           if (hour === guildCfg.remind_hour) {
             await sendDailyReminder(client, guildCfg, { lastCall: false, today });
           }
@@ -223,4 +269,4 @@ export function startScheduler(client) {
   return task;
 }
 
-export const _internals = { sendDailyReminder, runWeeklyForGuild, sendWeeklyPlanReminder };
+export const _internals = { sendDailyReminder, runWeeklyForGuild, sendWeeklyPlanReminder, sendDueReminders };
