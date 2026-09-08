@@ -293,7 +293,7 @@ src/
   scheduler.js      một cron mỗi giờ, đọc cấu hình từng server
   commands/         mỗi lệnh một file
   commands/note-save.js  menu chuột phải "Lưu vào ghi chú"
-scripts/selftest.js  158 kiểm tra logic, chạy `npm test`, không cần Discord
+scripts/selftest.js  163 kiểm tra logic, chạy `npm test`, không cần Discord
 scripts/check-ai.js  chẩn đoán key + model, chạy `npm run check-ai`
 scripts/send-reminder.js  bắn lời nhắc thủ công, chạy `npm run remind`
 data/bot.db          dữ liệu (đã gitignore)

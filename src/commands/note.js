@@ -217,9 +217,6 @@ export async function saveNote(interaction, { title, body, tags, shared, sourceU
     return interaction.reply({ content: 'Ghi chú rỗng thì không lưu được.', flags: MessageFlags.Ephemeral });
   }
 
-  // Ghi chú chia sẻ còn phải fetch kênh rồi đăng bài — giữ chỗ trước cho chắc.
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
   const displayName = interaction.member?.displayName ?? interaction.user.username;
   touchUser(interaction.guildId, interaction.user.id, displayName);
 
@@ -233,6 +230,10 @@ export async function saveNote(interaction, { title, body, tags, shared, sourceU
     sourceUrl,
     date: logicalDate(),
   });
+
+  // Ghi chú đã nằm trong SQLite trước khi chạm tới mạng — mất mạng thì mất phản
+  // hồi chứ không mất ghi chú. Bên dưới mới là fetch kênh rồi đăng bài.
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const embed = noteEmbed(note, {
     authorName: displayName,

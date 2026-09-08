@@ -662,6 +662,64 @@ db.updateGuildConfig(G, { channel_id: 'chan-1' });
   check('gõ thẳng mã cũng không mở được ghi chú riêng của người khác', out.replies[0].content.includes('Không tìm thấy'), true);
 }
 
+/* ------------------------------- mat mang giua chung thi khong duoc mat du lieu */
+// deferReply la loi goi mang DAU TIEN trong luong. No nem loi (ENOTFOUND) thi moi
+// thu ghi vao SQLite phai da xong tu truoc, khong thi bao cao vua go bay mat.
+{
+  const OU = 'user-mat-mang';
+  const offlineDate = '2025-09-10';
+
+  function offlineInteraction(fields, customId) {
+    return {
+      customId,
+      guildId: G,
+      deferred: false,
+      user: { id: OU, username: 'mat-mang', displayAvatarURL: () => 'https://avatar' },
+      member: { displayName: 'Mất mạng' },
+      guild: { members: { fetch: async () => null } },
+      client: { channels: { fetch: async () => null } },
+      fields: { getTextInputValue: (k) => fields[k] ?? '' },
+      options: {
+        getSubcommand: () => 'add',
+        getString: () => null,
+        getBoolean: () => null,
+        getInteger: () => null,
+      },
+      reply: async (p) => p,
+      deferReply: async () => {
+        throw new Error('getaddrinfo ENOTFOUND discord.com');
+      },
+    };
+  }
+
+  const dailyModule = await import('../src/commands/daily.js');
+  const daily = offlineInteraction(
+    { done: 'Hoc shadowing tieng Nhat 30 phut va lam xong bai nghe N2', next: '', blocker: '' },
+    `daily:${offlineDate}`,
+  );
+  let dailyThrew = false;
+  await dailyModule.handleModal(daily).catch(() => {
+    dailyThrew = true;
+  });
+  check('deferReply that su bi goi (test khong rong)', dailyThrew, true);
+  const saved = db.getDaily(G, OU, offlineDate);
+  check('mat mang van ghi duoc bao cao daily', saved?.done.startsWith('Hoc shadowing'), true);
+  check('mat mang van cong XP', saved?.xp > 0, true);
+
+  const noteBefore = db.countNotes({ guildId: G, userId: OU, scope: 'mine' });
+  const offlineNote = offlineInteraction({ title: '', body: 'ghi chu luc mat mang', tags: '' }, 'note:add:0');
+  let noteThrew = false;
+  await note.saveNote(offlineNote, { body: 'ghi chu luc mat mang', shared: false }).catch(() => {
+    noteThrew = true;
+  });
+  check('saveNote cung cham toi deferReply', noteThrew, true);
+  check(
+    'mat mang van ghi duoc ghi chu',
+    db.countNotes({ guildId: G, userId: OU, scope: 'mine' }),
+    noteBefore + 1,
+  );
+}
+
 if (failures) {
   console.error(`❌ ${failures} kiểm tra thất bại`);
   process.exit(1);

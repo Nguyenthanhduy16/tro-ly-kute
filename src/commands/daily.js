@@ -135,11 +135,6 @@ async function submit(interaction, { date, done, nextPlan, blocker }) {
     });
   }
 
-  // Từ đây trở đi là tạo thread, gán role, đăng bài — toàn gọi REST và dư sức
-  // vượt 3 giây Discord cho phép trả lời. Giữ chỗ trước, sửa lại nội dung sau,
-  // nếu không sẽ ăn 10062 Unknown interaction đúng vào hôm đầu tiên của ngày.
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
   const { guildId } = interaction;
   const userId = interaction.user.id;
   const displayName = interaction.member?.displayName ?? interaction.user.username;
@@ -177,6 +172,12 @@ async function submit(interaction, { date, done, nextPlan, blocker }) {
 
   const user = touchUser(guildId, userId, displayName);
   const prog = levelProgress(user.xp);
+
+  // Mọi thứ bên trên là ghi SQLite, xong trong tích tắc và không cần mạng —
+  // cố ý làm trước để mất mạng cũng không nuốt mất báo cáo vừa gõ.
+  // Từ đây mới là gán role, tạo thread, đăng bài: toàn gọi REST và dư sức vượt
+  // 3 giây Discord cho phép trả lời, nên phải giữ chỗ trước rồi sửa nội dung sau.
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const promotion = isEdit
     ? { promoted: false, rank: null }

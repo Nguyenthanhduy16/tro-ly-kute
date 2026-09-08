@@ -108,14 +108,16 @@ export async function handleModal(interaction) {
   const userId = interaction.user.id;
   const displayName = interaction.member?.displayName ?? interaction.user.username;
 
-  // syncRank có thể phải tạo và gán role — gọi REST, dễ vượt 3 giây Discord cho phép.
-  await interaction.deferReply();
-
   touchUser(guildId, userId, displayName);
   const existing = getPlan(guildId, userId, weekStart);
   const award = existing?.xp_awarded ? 0 : XP.WEEKLY_PLAN;
 
   savePlan(guildId, userId, weekStart, plan, 1); // xp_awarded chỉ ghi lúc INSERT đầu tiên
+
+  // Ghi xong vào SQLite mới giữ chỗ: mất mạng thì kế hoạch vẫn còn, chỉ là không
+  // thấy phản hồi. syncRank bên dưới gọi REST, dễ vượt 3 giây Discord cho phép.
+  await interaction.deferReply();
+
   if (award) {
     const previousRank = getUser(guildId, userId)?.rank_key ?? null;
     addXp(guildId, userId, award);
